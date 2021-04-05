@@ -1,0 +1,7 @@
+# version = "Two"
+edition = "2018"
+tab_spaces = 2
+newline_style = "Unix"
+reorder_imports = false
+# struct_lit_width = 0
+# trailing_comma = "Vertical"

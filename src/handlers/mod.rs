@@ -1,4 +1,4 @@
-use actix_web::{ HttpResponse, get, web };
+use actix_web::{HttpResponse, get, web};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -20,6 +20,6 @@ pub async fn test(name: web::Path<String>) -> HttpResponse {
   let serialized = serde_json::to_string(&user).unwrap();
 
   HttpResponse::Ok()
-  .content_type("application/json; charset=utf-8")
-  .body(serialized)
+    .content_type("application/json; charset=utf-8")
+    .body(serialized)
 }

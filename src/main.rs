@@ -1,4 +1,5 @@
-#[macro_use] extern crate diesel;
+#[macro_use]
+extern crate diesel;
 extern crate r2d2;
 
 #[macro_use]
@@ -9,8 +10,8 @@ extern crate diesel_migrations;
 
 #[allow(unused_imports)]
 use actix_web::{ web, App, HttpServer, Responder, middleware };
-use diesel::SqliteConnection;
 use diesel::r2d2::ConnectionManager;
+use diesel::SqliteConnection;
 
 // mod media;
 // mod errors;
@@ -32,9 +33,7 @@ async fn main() -> std::io::Result<()> {
 
   // create db connection pool
   let manager = ConnectionManager::<SqliteConnection>::new(database_url);
-  let pool: Pool = r2d2::Pool::builder()
-  .build(manager)
-  .unwrap();
+  let pool: Pool = r2d2::Pool::builder().build(manager).unwrap();
 
   let migration = embedded_migrations::run(&pool.clone().get().expect("Failed to migrate."));
 

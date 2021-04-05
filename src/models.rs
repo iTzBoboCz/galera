@@ -13,8 +13,8 @@ pub struct User {
 #[allow(non_camel_case_types)]
 #[derive(Identifiable, Queryable, Associations)]
 #[table_name = "folder"]
-#[belongs_to(User, foreign_key="owner_id")]
-#[belongs_to(Folder, foreign_key="parent")]
+#[belongs_to(User, foreign_key = "owner_id")]
+#[belongs_to(Folder, foreign_key = "parent")]
 pub struct Folder {
   pub id: i32,
   pub owner_id: i32,
@@ -25,7 +25,7 @@ pub struct Folder {
 #[allow(non_camel_case_types)]
 #[derive(Identifiable, Queryable, Associations)]
 #[table_name = "album"]
-#[belongs_to(User, foreign_key="owner_id")]
+#[belongs_to(User, foreign_key = "owner_id")]
 pub struct Album {
   pub id: i32,
   pub owner_id: i32,
@@ -36,8 +36,8 @@ pub struct Album {
 #[allow(non_camel_case_types)]
 #[derive(Identifiable, Queryable, Associations)]
 #[table_name = "album_invite"]
-#[belongs_to(Album, foreign_key="album_id")]
-#[belongs_to(User, foreign_key="invited_user_id")]
+#[belongs_to(Album, foreign_key = "album_id")]
+#[belongs_to(User, foreign_key = "invited_user_id")]
 pub struct Album_invite {
   pub id: i32,
   pub album_id: i32,
@@ -50,8 +50,8 @@ pub struct Album_invite {
 #[allow(non_camel_case_types)]
 #[derive(Identifiable, Queryable, Associations)]
 #[table_name = "photo"]
-#[belongs_to(Folder, foreign_key="folder_id")]
-#[belongs_to(User, foreign_key="owner_id")]
+#[belongs_to(Folder, foreign_key = "folder_id")]
+#[belongs_to(User, foreign_key = "owner_id")]
 pub struct Photo {
   pub id: i32,
   pub filename: String,
@@ -67,8 +67,8 @@ pub struct Photo {
 #[allow(non_camel_case_types)]
 #[derive(Identifiable, Queryable, Associations)]
 #[table_name = "favourite_photo"]
-#[belongs_to(Photo, foreign_key="photo_id")]
-#[belongs_to(User, foreign_key="user_id")]
+#[belongs_to(Photo, foreign_key = "photo_id")]
+#[belongs_to(User, foreign_key = "user_id")]
 pub struct Favourite_photo {
   pub id: i32,
   pub photo_id: i32,
