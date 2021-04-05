@@ -4,6 +4,9 @@ extern crate r2d2;
 #[macro_use]
 extern crate log;
 
+#[macro_use]
+extern crate diesel_migrations;
+
 #[allow(unused_imports)]
 use actix_web::{ web, App, HttpServer, Responder, middleware };
 use diesel::SqliteConnection;
@@ -16,6 +19,8 @@ mod models;
 mod schema;
 
 pub type Pool = r2d2::Pool<ConnectionManager<SqliteConnection>>;
+
+embed_migrations!();
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -30,6 +35,13 @@ async fn main() -> std::io::Result<()> {
   let pool: Pool = r2d2::Pool::builder()
   .build(manager)
   .unwrap();
+
+  let migration = embedded_migrations::run(&pool.clone().get().expect("Failed to migrate."));
+
+  match migration {
+    Ok(_) => info!("Migration succesful."),
+    Err(_) => warn!("Failed to migrate."),
+  }
 
   HttpServer::new(move || {
     App::new()
