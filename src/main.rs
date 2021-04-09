@@ -12,12 +12,15 @@ extern crate diesel_migrations;
 use actix_web::{ web, App, HttpServer, Responder, middleware };
 use diesel::r2d2::ConnectionManager;
 use diesel::SqliteConnection;
+use infer::{is_audio, is_video};
+use walkdir::WalkDir;
 
 // mod media;
 // mod errors;
 mod handlers;
 mod models;
 mod schema;
+mod scan;
 
 pub type Pool = r2d2::Pool<ConnectionManager<SqliteConnection>>;
 
@@ -40,6 +43,39 @@ async fn main() -> std::io::Result<()> {
   match migration {
     Ok(_) => info!("Migration succesful."),
     Err(_) => warn!("Failed to migrate."),
+  }
+
+  use std::{fs, io};
+  use std::path::{PathBuf, Path};
+
+  let xdg_data = "gallery";
+  let username = "ondrejpesek";
+
+  let root = format!("{}/{}/", xdg_data, username);
+
+  for entry in WalkDir::new(&root).into_iter().filter_map(|e| e.ok()) {
+    // https://stackoverflow.com/questions/30309100/how-to-check-if-a-given-path-is-a-file-or-directory#comment105412329_30309566
+    let mut found_folders: Vec<&str>;
+    if entry.path().is_dir() {
+      let string = entry.path().display().to_string();
+      let string_stripped = string.strip_prefix(&root).unwrap();
+
+      if string_stripped == "" { continue };
+
+      let string_split = string_stripped.split("/").map(String::from).collect::<Vec<String>>();
+
+      // skip if folder doesn't contain any pictures or videos
+      if string_split.len() == 1 {
+        if !scan::folder_has_media(PathBuf::from(string)) { continue };
+      }
+
+      warn!("{:?}", string_split);
+      for s in string_split {
+        warn!("{:?}", s);
+        // found_folders.push(s);
+      }
+    }
+    // warn!("{:?}", found_folders);
   }
 
   HttpServer::new(move || {
