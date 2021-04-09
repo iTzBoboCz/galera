@@ -29,14 +29,19 @@ pub fn is_media_suppoted(pathbuf: std::path::PathBuf) -> bool {
     "audio/x-flac",
     "audio/x-wav",
     "audio/amr",
-    "audio/aac"
+    "audio/aac",
+    "application/json"
   ];
 
-  // let kind = infer::get_from_path(pathbuf).unwrap();
+  let kind = infer::get_from_path(pathbuf).unwrap();
   // let kind = infer::get_from_path(pathbuf.as_path()).unwrap();
-  // if !kind.is_none() && valid_mime_types.contains(&kind.unwrap().mime_type()) {
-  //   return true;
-  // }
+
+  if kind.is_none() { return false };
+
+  if !kind.is_none() && valid_mime_types.contains(&kind.unwrap().mime_type()) {
+    warn!("hh{:?}", kind.unwrap().mime_type());
+    return true;
+  }
 
   return false;
 }
@@ -46,6 +51,7 @@ pub fn folder_has_media(dir: PathBuf) -> bool {
     .into_iter()
     .filter(|r| r.is_ok()) // Get rid of Err variants for Result<DirEntry>
     .map(|r| r.unwrap().path()) // This is safe, since we only have the Ok variants
+    .filter(|r| r.is_file()) // Get rid of Err variants for Result<DirEntry>
     .filter(|r| is_media_suppoted(PathBuf::from(r)) == false) // Filter out non-folders
     .collect();
 
