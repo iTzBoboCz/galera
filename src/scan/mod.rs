@@ -46,9 +46,11 @@ pub fn is_media_suppoted(pathbuf: &PathBuf) -> bool {
   return false;
 }
 
-pub fn scan_recursively(path: PathBuf) -> Vec<PathBuf> {
+pub fn scan_recursively(path: PathBuf, array: &mut Vec<PathBuf>) -> bool {
+  let mut state = false;
+
   // skip empty folders
-  if path.read_dir().map(|mut i| i.next().is_none()).unwrap_or(false) { return Vec::new() }
+  if path.read_dir().map(|mut i| i.next().is_none()).unwrap_or(false) { return state; }
 
   let folders = fs::read_dir(path.clone()).unwrap()
     .into_iter()
@@ -57,9 +59,15 @@ pub fn scan_recursively(path: PathBuf) -> Vec<PathBuf> {
     .filter(|r| r.is_dir())
     .collect::<Vec<PathBuf>>();
 
-  let mut array: Vec<PathBuf> = Vec::new();
   for folder in folders.clone() {
-    array.append(&mut scan_recursively(folder));
+    let found = scan_recursively(folder, array);
+    if !state {
+      state = found;
+    }
+  }
+
+  if state {
+    return true;
   }
 
   let files = fs::read_dir(path.clone()).unwrap()
@@ -72,9 +80,10 @@ pub fn scan_recursively(path: PathBuf) -> Vec<PathBuf> {
 
   if files.len() > 0 {
     array.push(path);
+    return true;
+  } else {
+    return false;
   }
-
-  return array;
 }
 
 pub fn scan_root(xdg_data: &str, username: &str) {
@@ -92,7 +101,7 @@ pub fn scan_root(xdg_data: &str, username: &str) {
     .collect::<Vec<PathBuf>>();
 
   if folders.len() > 0 {
-    found_folders.append(&mut scan_recursively(PathBuf::from(current_dir)));
+    scan_recursively(PathBuf::from(current_dir), &mut found_folders);
   }
 
   debug!("{:?}", found_folders);
