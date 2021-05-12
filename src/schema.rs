@@ -2,8 +2,8 @@ table! {
   album (id) {
     id -> Integer,
     owner_id -> Integer,
-    link -> Nullable<Text>,
-    password -> Nullable<Text>,
+    link -> Nullable<Varchar>,
+    password -> Nullable<Varchar>,
   }
 }
 
@@ -30,29 +30,29 @@ table! {
     id -> Integer,
     owner_id -> Integer,
     parent -> Nullable<Integer>,
-    name -> Integer,
+    name -> Varchar,
   }
 }
 
 table! {
   photo (id) {
     id -> Integer,
-    filename -> Text,
+    filename -> Varchar,
     folder_id -> Integer,
     owner_id -> Integer,
     album_id -> Nullable<Integer>,
     width -> Integer,
     height -> Integer,
     date_taken -> Timestamp,
-    sha2_512 -> Text,
+    sha2_512 -> Varchar,
   }
 }
 
 table! {
   user (id) {
     id -> Integer,
-    username -> Text,
-    email -> Text,
+    username -> Varchar,
+    email -> Varchar,
   }
 }
 

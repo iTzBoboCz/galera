@@ -1,8 +1,8 @@
 CREATE TABLE `folder` (
-	`id` INT NOT NULL PRIMARY KEY,
+	`id` INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
 	`owner_id` INT NOT NULL,
 	`parent` INT,
-	`name` INT NOT NULL,
+	`name` VARCHAR(255) NOT NULL,
 	CONSTRAINT `folder_fk0` FOREIGN KEY (`owner_id`) REFERENCES `user`(`id`),
   CONSTRAINT `folder_fk1` FOREIGN KEY (`parent`) REFERENCES `folder`(`id`)
 );

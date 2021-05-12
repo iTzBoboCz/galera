@@ -1,5 +1,5 @@
 CREATE TABLE `album_invite` (
-	`id` INT NOT NULL PRIMARY KEY,
+	`id` INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
 	`album_id` INT NOT NULL,
 	`invited_user_id` INT NOT NULL,
 	`accepted` BOOLEAN NOT NULL,

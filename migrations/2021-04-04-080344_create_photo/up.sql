@@ -1,5 +1,5 @@
 CREATE TABLE `photo` (
-	`id` INT NOT NULL PRIMARY KEY,
+	`id` INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
 	`filename` varchar(255) NOT NULL,
 	`folder_id` INT NOT NULL,
 	`owner_id` INT NOT NULL,
