@@ -11,7 +11,7 @@ extern crate diesel_migrations;
 #[allow(unused_imports)]
 use actix_web::{ web, App, HttpServer, Responder, middleware };
 use diesel::r2d2::ConnectionManager;
-use diesel::SqliteConnection;
+use diesel::MysqlConnection;
 
 // mod media;
 // mod errors;
@@ -20,7 +20,8 @@ mod models;
 mod schema;
 mod scan;
 
-pub type Pool = r2d2::Pool<ConnectionManager<SqliteConnection>>;
+pub type Pool = r2d2::Pool<ConnectionManager<MysqlConnection>>;
+pub type Manager = ConnectionManager::<MysqlConnection>;
 
 embed_migrations!();
 
@@ -33,7 +34,7 @@ async fn main() -> std::io::Result<()> {
   let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
 
   // create db connection pool
-  let manager = ConnectionManager::<SqliteConnection>::new(database_url);
+  let manager = Manager::new(database_url);
   let pool: Pool = r2d2::Pool::builder().build(manager).unwrap();
 
   let migration = embedded_migrations::run(&pool.clone().get().expect("Failed to migrate."));
