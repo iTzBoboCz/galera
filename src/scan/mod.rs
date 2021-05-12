@@ -1,5 +1,10 @@
+use crate::Pool;
+use crate::models::*;
+use crate::diesel::RunQueryDsl;
+use crate::db;
 use std::fs;
 use std::path::PathBuf;
+use db::get_user_username;
 use infer;
 
 pub fn is_media_suppoted(pathbuf: &PathBuf) -> bool {
@@ -86,8 +91,9 @@ pub fn scan_recursively(path: PathBuf, array: &mut Vec<PathBuf>) -> bool {
   }
 }
 
-pub fn scan_root(xdg_data: &str, username: &str) {
+pub fn scan_root(pool: Pool, xdg_data: &str, user_id: i32) {
   // root directory
+  let username = get_user_username(pool.clone(), user_id);
   let current_dir = format!("{}/{}/", xdg_data, username);
 
   let mut found_folders: Vec<PathBuf> = Vec::new();
@@ -104,7 +110,66 @@ pub fn scan_root(xdg_data: &str, username: &str) {
     scan_recursively(PathBuf::from(current_dir), &mut found_folders);
   }
 
-  debug!("{:?}", found_folders);
+  add_folders_to_db(pool, found_folders, xdg_data, user_id);
+
   info!("Scanning is done.");
 }
 
+use crate::diesel::QueryDsl;
+use crate::diesel::ExpressionMethods;
+use crate::diesel::OptionalExtension;
+use crate::diesel::BoolExpressionMethods;
+// folders when using NTFS can be max. 260 characters (we currently support max. 255 - Linux maximum and max. VARCHAR size) TODO: warn user when scanning folder that is longer and skip it
+pub fn add_folders_to_db(pool: Pool, paths: Vec<PathBuf>, xdg_data: &str, user_id: i32) {
+  use crate::schema::folder;
+
+  let username = get_user_username(pool.clone(), user_id);
+  let root = format!("{}/{}/", xdg_data, username);
+
+
+  for path in paths {
+    debug!("scanning path: {:?}", path);
+
+    let path_string = path.display().to_string();
+    let path_stripped = path_string.strip_prefix(&root).unwrap();
+    let string_split = path_stripped.split("/").collect::<Vec<_>>();
+
+    let mut parent: Option<i32> = None;
+    let mut i = 0;
+    for s in string_split {
+      let folder_id: Option<i32>;
+      if i == 0 {
+        parent = None;
+
+        folder_id = folder::table
+          .select(folder::id)
+          .filter(folder::dsl::parent.is_null().and(folder::dsl::name.eq(s).and(folder::owner_id.eq(user_id))))
+          .first::<i32>(&pool.clone().get().unwrap())
+          .optional()
+          .unwrap();
+      } else {
+        folder_id = folder::table
+          .select(folder::id)
+          .filter(folder::dsl::parent.eq(parent).and(folder::dsl::name.eq(s).and(folder::owner_id.eq(user_id))))
+          .first::<i32>(&pool.clone().get().unwrap())
+          .optional()
+          .unwrap();
+      }
+
+      if folder_id.is_none() {
+        let new_folder = NewFolder::new(user_id, String::from(s), parent );
+
+        diesel::insert_into(folder::table)
+          .values(new_folder)
+          .execute(&pool.get().unwrap())
+          .expect(format!("Error scanning folder {} in {}", s, path_string).as_str());
+
+        parent = Some(db::get_last_insert_id(pool.clone()));
+      } else {
+        parent = folder_id;
+      }
+
+      i = i + 1;
+    }
+  }
+}

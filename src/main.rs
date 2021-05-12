@@ -19,6 +19,7 @@ mod handlers;
 mod models;
 mod schema;
 mod scan;
+mod db;
 
 pub type Pool = r2d2::Pool<ConnectionManager<MysqlConnection>>;
 pub type Manager = ConnectionManager::<MysqlConnection>;
@@ -45,8 +46,8 @@ async fn main() -> std::io::Result<()> {
   }
 
   let xdg_data = "gallery";
-  let username = "ondrejpesek";
-  scan::scan_root(xdg_data, username);
+  let user_id: i32 = 1;
+  scan::scan_root(pool.clone(), xdg_data, user_id);
 
   HttpServer::new(move || {
     App::new()

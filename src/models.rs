@@ -22,6 +22,20 @@ pub struct Folder {
   pub name: String,
 }
 
+#[derive(Insertable)]
+#[table_name = "folder"]
+pub struct NewFolder {
+  pub owner_id: i32,
+  pub parent: Option<i32>,
+  pub name: String,
+}
+
+impl NewFolder {
+  pub fn new(owner_id: i32, name: String, parent: Option<i32>) -> NewFolder {
+    return NewFolder { owner_id, name, parent };
+  }
+}
+
 #[allow(non_camel_case_types)]
 #[derive(Identifiable, Queryable, Associations)]
 #[table_name = "album"]
