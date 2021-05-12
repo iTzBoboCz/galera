@@ -9,20 +9,20 @@ extern crate log;
 extern crate diesel_migrations;
 
 #[allow(unused_imports)]
-use actix_web::{ web, App, HttpServer, Responder, middleware };
+use actix_web::{middleware, web, App, HttpServer, Responder};
 use diesel::r2d2::ConnectionManager;
 use diesel::MysqlConnection;
 
 // mod media;
 // mod errors;
+mod db;
 mod handlers;
 mod models;
-mod schema;
 mod scan;
-mod db;
+mod schema;
 
 pub type Pool = r2d2::Pool<ConnectionManager<MysqlConnection>>;
-pub type Manager = ConnectionManager::<MysqlConnection>;
+pub type Manager = ConnectionManager<MysqlConnection>;
 
 embed_migrations!();
 

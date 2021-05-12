@@ -1,11 +1,16 @@
 use crate::Pool;
-use crate::models::*;
-use crate::diesel::RunQueryDsl;
 use crate::db;
-use std::fs;
-use std::path::PathBuf;
+use crate::diesel::RunQueryDsl;
+use crate::models::*;
+use crate::diesel::BoolExpressionMethods;
+use crate::diesel::ExpressionMethods;
+use crate::diesel::OptionalExtension;
+use crate::diesel::QueryDsl;
+use crate::schema::folder;
 use db::get_user_username;
 use infer;
+use std::fs;
+use std::path::PathBuf;
 
 pub fn is_media_suppoted(pathbuf: &PathBuf) -> bool {
   let valid_mime_types = [
@@ -115,10 +120,6 @@ pub fn scan_root(pool: Pool, xdg_data: &str, user_id: i32) {
   info!("Scanning is done.");
 }
 
-use crate::diesel::QueryDsl;
-use crate::diesel::ExpressionMethods;
-use crate::diesel::OptionalExtension;
-use crate::diesel::BoolExpressionMethods;
 // folders when using NTFS can be max. 260 characters (we currently support max. 255 - Linux maximum and max. VARCHAR size) TODO: warn user when scanning folder that is longer and skip it
 pub fn add_folders_to_db(pool: Pool, paths: Vec<PathBuf>, xdg_data: &str, user_id: i32) {
   use crate::schema::folder;

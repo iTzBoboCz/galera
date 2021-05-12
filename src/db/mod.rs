@@ -1,9 +1,9 @@
-use diesel::sql_types::Integer;
-use diesel::select;
-use crate::Pool;
+use crate::diesel::QueryDsl;
 use crate::diesel::RunQueryDsl;
 use crate::schema::user;
-use crate::diesel::QueryDsl;
+use crate::Pool;
+use diesel::select;
+use diesel::sql_types::Integer;
 
 use crate::diesel::ExpressionMethods;
 
