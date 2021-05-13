@@ -8,6 +8,7 @@ use crate::diesel::OptionalExtension;
 use crate::diesel::QueryDsl;
 use crate::schema::folder;
 use db::get_user_username;
+use diesel::Table;
 use infer;
 use std::fs;
 use std::path::PathBuf;
@@ -115,18 +116,17 @@ pub fn scan_root(pool: Pool, xdg_data: &str, user_id: i32) {
     scan_recursively(PathBuf::from(current_dir), &mut found_folders);
   }
 
-  add_folders_to_db(pool, found_folders, xdg_data, user_id);
+  add_folders_to_db(pool.clone(), found_folders, xdg_data, user_id);
+
+  scan_folders_for_media(pool, xdg_data, user_id);
 
   info!("Scanning is done.");
 }
 
 // folders when using NTFS can be max. 260 characters (we currently support max. 255 - Linux maximum and max. VARCHAR size) TODO: warn user when scanning folder that is longer and skip it
 pub fn add_folders_to_db(pool: Pool, paths: Vec<PathBuf>, xdg_data: &str, user_id: i32) {
-  use crate::schema::folder;
-
   let username = get_user_username(pool.clone(), user_id);
   let root = format!("{}/{}/", xdg_data, username);
-
 
   for path in paths {
     debug!("scanning path: {:?}", path);
@@ -158,7 +158,7 @@ pub fn add_folders_to_db(pool: Pool, paths: Vec<PathBuf>, xdg_data: &str, user_i
       }
 
       if folder_id.is_none() {
-        let new_folder = NewFolder::new(user_id, String::from(s), parent );
+        let new_folder = NewFolder::new(user_id, String::from(s), parent);
 
         diesel::insert_into(folder::table)
           .values(new_folder)
@@ -174,3 +174,65 @@ pub fn add_folders_to_db(pool: Pool, paths: Vec<PathBuf>, xdg_data: &str, user_i
     }
   }
 }
+
+pub fn scan_folders_for_media(pool: Pool, xdg_data: &str, user_id: i32) {
+  let username = get_user_username(pool.clone(), user_id);
+
+  let root_folders = folder::table
+    .select(folder::table::all_columns())
+    .filter(folder::dsl::parent.is_null().and(folder::owner_id.eq(user_id)))
+    .get_results::<Folder>(&pool.clone().get().unwrap())
+    .optional()
+    .unwrap()
+    .unwrap();
+
+  for root_folder in root_folders {
+    scan_select(pool.clone(), root_folder, String::new(), xdg_data, user_id, username.clone());
+  }
+
+  // scan_folder_media - gallery/username
+}
+
+pub fn scan_select(pool: Pool, parent_folder: Folder, mut path: String, xdg_data: &str, user_id: i32, username: String) {
+  if path == "" {
+    path = format!("{}/{}/{}", xdg_data, username, parent_folder.name);
+  }
+  let folders = folder::table
+    .select(folder::table::all_columns())
+    .filter(folder::dsl::parent.eq(parent_folder.id).and(folder::owner_id.eq(user_id)))
+    .get_results::<Folder>(&pool.clone().get().unwrap())
+    .optional()
+    .unwrap()
+    .unwrap();
+
+  scan_folder_media(pool.clone(), parent_folder.clone(), path.clone(), user_id);
+
+  for folder in folders {
+    scan_select(pool.clone(), folder.clone(), format!("{}/{}", path.clone(), folder.name), xdg_data, user_id, username.clone());
+  }
+}
+
+pub fn scan_folder_media(pool: Pool, parent_folder: Folder, path: String, user_id: i32) {
+
+  let media = folder_get_media(PathBuf::from(path.clone()));
+
+  if media.is_empty() { return }
+
+  // TODO: strip prefix, insert file
+
+  error!("{:?}", path);
+  warn!("{:?}", media);
+}
+
+pub fn folder_get_media(dir: PathBuf) -> Vec<PathBuf> {
+  let data: Vec<PathBuf> = fs::read_dir(&dir).unwrap()
+    .into_iter()
+    .filter(|r| r.is_ok()) // Get rid of Err variants for Result<DirEntry>
+    .map(|r| r.unwrap().path()) // This is safe, since we only have the Ok variants
+    .filter(|r| r.is_file()) // Get rid of Err variants for Result<DirEntry>
+    .filter(|r| is_media_suppoted(r) == false) // Filter out non-folders
+    .collect();
+
+  return data;
+}
+

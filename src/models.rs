@@ -11,7 +11,7 @@ pub struct User {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Identifiable, Queryable, Associations)]
+#[derive(Identifiable, Queryable, Associations, Debug, Clone)]
 #[table_name = "folder"]
 #[belongs_to(User, foreign_key = "owner_id")]
 #[belongs_to(Folder, foreign_key = "parent")]
