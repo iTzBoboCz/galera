@@ -1,5 +1,5 @@
 use super::schema::{user, folder, album, album_invite, photo, favourite_photo};
-use diesel::sql_types::Timestamp;
+use chrono::NaiveDateTime;
 
 #[allow(non_camel_case_types)]
 #[derive(Identifiable, Queryable)]
@@ -74,8 +74,8 @@ pub struct Photo {
   pub album_id: Option<i32>,
   pub width: i32,
   pub height: i32,
-  pub date_taken: Timestamp,
   pub sha2_512_hash: String,
+  pub date_taken: NaiveDateTime,
 }
 
 #[allow(non_camel_case_types)]
