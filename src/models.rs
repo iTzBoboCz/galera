@@ -74,8 +74,8 @@ pub struct Photo {
   pub album_id: Option<i32>,
   pub width: i32,
   pub height: i32,
-  pub sha2_512_hash: String,
   pub date_taken: NaiveDateTime,
+  pub sha2_512: String,
 }
 
 #[allow(non_camel_case_types)]
