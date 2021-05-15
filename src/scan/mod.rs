@@ -13,7 +13,7 @@ use infer;
 use std::fs;
 use std::path::PathBuf;
 
-pub fn is_media_suppoted(pathbuf: &PathBuf) -> bool {
+pub fn is_media_supported(pathbuf: &PathBuf) -> bool {
   let valid_mime_types = [
     "image/jpeg",
     "image/png",
@@ -86,7 +86,7 @@ pub fn scan_recursively(path: PathBuf, array: &mut Vec<PathBuf>) -> bool {
     .filter(|r| r.is_ok()) // Get rid of Err variants for Result<DirEntry>
     .map(|r| r.unwrap().path()) // This is safe, since we only have the Ok variants
     .filter(|r| r.is_file())
-    .filter(|r| is_media_suppoted(r))
+    .filter(|r| is_media_supported(r))
     .collect::<Vec<PathBuf>>();
 
   if files.len() > 0 {
@@ -230,7 +230,7 @@ pub fn folder_get_media(dir: PathBuf) -> Vec<PathBuf> {
     .filter(|r| r.is_ok()) // Get rid of Err variants for Result<DirEntry>
     .map(|r| r.unwrap().path()) // This is safe, since we only have the Ok variants
     .filter(|r| r.is_file()) // Get rid of Err variants for Result<DirEntry>
-    .filter(|r| is_media_suppoted(r) == false) // Filter out non-folders
+    .filter(|r| is_media_supported(r)) // Filter out non-folders
     .collect();
 
   return data;
