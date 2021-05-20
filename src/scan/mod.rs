@@ -7,6 +7,8 @@ use crate::diesel::ExpressionMethods;
 use crate::diesel::OptionalExtension;
 use crate::diesel::QueryDsl;
 use crate::schema::folder;
+use crate::schema::photo;
+use chrono::NaiveDateTime;
 use db::get_user_username;
 use diesel::Table;
 use infer;
@@ -46,7 +48,7 @@ pub fn is_media_supported(pathbuf: &PathBuf) -> bool {
 
   let kind = infer::get_from_path(pathbuf).unwrap();
 
-  if kind.is_none() { return false };
+  if kind.is_none() { return false; }
 
   if valid_mime_types.contains(&kind.unwrap().mime_type()) {
     info!("Found: {:?} with type: {:?}", pathbuf, kind.unwrap().mime_type());
@@ -205,26 +207,52 @@ pub fn scan_select(pool: Pool, parent_folder: Folder, mut path: String, xdg_data
     .unwrap()
     .unwrap();
 
-  scan_folder_media(pool.clone(), parent_folder.clone(), path.clone(), user_id);
+  scan_folder_media(pool.clone(), parent_folder.clone(), path.clone(), xdg_data, user_id, username.clone());
 
   for folder in folders {
     scan_select(pool.clone(), folder.clone(), format!("{}/{}", path.clone(), folder.name), xdg_data, user_id, username.clone());
   }
 }
 
-pub fn scan_folder_media(pool: Pool, parent_folder: Folder, path: String, user_id: i32) {
+pub fn scan_folder_media(pool: Pool, parent_folder: Folder, path: String, xdg_data: &str, user_id: i32, username: String) {
+  let mediaVecOption = folder_get_media(PathBuf::from(path.clone()));
+  if mediaVecOption.is_none() { return; }
 
-  let media = folder_get_media(PathBuf::from(path.clone()));
+  let mediaVec = mediaVecOption.unwrap();
 
-  if media.is_empty() { return }
+  if mediaVec.is_empty() { return; }
 
-  // TODO: strip prefix, insert file
+  let prefix = format!("{}/{}", xdg_data, username);
 
-  error!("{:?}", path);
-  warn!("{:?}", media);
+  // error!("{:?}", path);
+  // warn!("{:?}", mediaVec);
+
+  for media in mediaVec {
+    let name = media.strip_prefix(&path).unwrap();
+
+    let photo = photo::table
+      .select(photo::id)
+      .filter(photo::dsl::filename.eq(name.display().to_string()).and(photo::owner_id.eq(user_id).and(photo::folder_id.eq(parent_folder.id))))
+      .first::<i32>(&pool.clone().get().unwrap())
+      .optional()
+      .unwrap();
+
+    if photo.is_none() {
+      error!("{:?} doesnt exist in database", media);
+
+      // error!("file {} doesnt exist", name.display().to_string());
+      let new_photo = NewPhoto::new(name.display().to_string(), parent_folder.id, user_id, None, 0, 0, NaiveDateTime::from_timestamp(10, 10), String::from(""));
+      diesel::insert_into(photo::table)
+        .values(new_photo)
+        .execute(&pool.get().unwrap())
+        .expect(format!("Error inserting file {:?}", media).as_str());
+    }
+  }
 }
 
-pub fn folder_get_media(dir: PathBuf) -> Vec<PathBuf> {
+pub fn folder_get_media(dir: PathBuf) -> Option<Vec<PathBuf>> {
+  if !dir.exists() { return None; }
+
   let data: Vec<PathBuf> = fs::read_dir(&dir).unwrap()
     .into_iter()
     .filter(|r| r.is_ok()) // Get rid of Err variants for Result<DirEntry>
@@ -233,6 +261,6 @@ pub fn folder_get_media(dir: PathBuf) -> Vec<PathBuf> {
     .filter(|r| is_media_supported(r)) // Filter out non-folders
     .collect();
 
-  return data;
+  return Some(data);
 }
 
