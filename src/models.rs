@@ -78,6 +78,34 @@ pub struct Photo {
   pub sha2_512: String,
 }
 
+#[derive(Insertable)]
+#[table_name = "photo"]
+pub struct NewPhoto {
+  pub filename: String,
+  pub folder_id: i32,
+  pub owner_id: i32,
+  pub album_id: Option<i32>,
+  pub width: i32,
+  pub height: i32,
+  pub date_taken: NaiveDateTime,
+  pub sha2_512: String,
+}
+
+impl NewPhoto {
+  pub fn new(filename: String, folder_id: i32, owner_id: i32, album_id: Option<i32>, width: i32, height: i32, date_taken: NaiveDateTime, sha2_512: String) -> NewPhoto {
+    return NewPhoto {
+      filename,
+      folder_id,
+      owner_id,
+      album_id,
+      width,
+      height,
+      date_taken,
+      sha2_512,
+    };
+  }
+}
+
 #[allow(non_camel_case_types)]
 #[derive(Identifiable, Queryable, Associations)]
 #[table_name = "favourite_photo"]
