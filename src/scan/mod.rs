@@ -102,7 +102,11 @@ pub fn scan_recursively(path: PathBuf, array: &mut Vec<PathBuf>) -> bool {
 
 pub fn scan_root(pool: Pool, xdg_data: &str, user_id: i32) {
   // root directory
-  let username = get_user_username(pool.clone(), user_id);
+  let username_option = get_user_username(pool.clone(), user_id);
+  if username_option.is_none() { return; }
+
+  let username = username_option.unwrap();
+
   let current_dir = format!("{}/{}/", xdg_data, username);
 
   let mut found_folders: Vec<PathBuf> = Vec::new();
@@ -128,7 +132,11 @@ pub fn scan_root(pool: Pool, xdg_data: &str, user_id: i32) {
 
 // folders when using NTFS can be max. 260 characters (we currently support max. 255 - Linux maximum and max. VARCHAR size) TODO: warn user when scanning folder that is longer and skip it
 pub fn add_folders_to_db(pool: Pool, paths: Vec<PathBuf>, xdg_data: &str, user_id: i32) {
-  let username = get_user_username(pool.clone(), user_id);
+  let username_option = get_user_username(pool.clone(), user_id);
+  if username_option.is_none() { return; }
+
+  let username = username_option.unwrap();
+
   let root = format!("{}/{}/", xdg_data, username);
 
   for path in paths {
@@ -168,7 +176,14 @@ pub fn add_folders_to_db(pool: Pool, paths: Vec<PathBuf>, xdg_data: &str, user_i
           .execute(&pool.get().unwrap())
           .expect(format!("Error scanning folder {} in {}", s, path_string).as_str());
 
-        parent = Some(db::get_last_insert_id(pool.clone()));
+          let last_insert_id = db::get_last_insert_id(pool.clone());
+
+          if last_insert_id.is_none() {
+            error!("Last insert id was not returned. This may happen if restarting MySQL during scanning.");
+            return;
+          }
+
+        parent = Some(last_insert_id.unwrap());
       } else {
         parent = folder_id;
       }
@@ -179,7 +194,10 @@ pub fn add_folders_to_db(pool: Pool, paths: Vec<PathBuf>, xdg_data: &str, user_i
 }
 
 pub fn scan_folders_for_media(pool: Pool, xdg_data: &str, user_id: i32) {
-  let username = get_user_username(pool.clone(), user_id);
+  let username_option = get_user_username(pool.clone(), user_id);
+  if username_option.is_none() { return; }
+
+  let username = username_option.unwrap();
 
   let root_folders = folder::table
     .select(folder::table::all_columns())
@@ -264,4 +282,3 @@ pub fn folder_get_media(dir: PathBuf) -> Option<Vec<PathBuf>> {
 
   return Some(data);
 }
-
