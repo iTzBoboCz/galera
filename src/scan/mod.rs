@@ -16,6 +16,9 @@ use std::fs;
 use std::path::PathBuf;
 use checksums::{ hash_file, Algorithm::SHA2512 };
 
+/// checks if the file type is supported.
+/// returns **true** for example for **image/jpeg**
+/// and **false** for **text/json**
 pub fn is_media_supported(pathbuf: &PathBuf) -> bool {
   let valid_mime_types = [
     "image/jpeg",
@@ -44,7 +47,6 @@ pub fn is_media_supported(pathbuf: &PathBuf) -> bool {
     "audio/x-wav",
     "audio/amr",
     "audio/aac",
-    "application/json"
   ];
 
   let kind = infer::get_from_path(pathbuf).unwrap();
@@ -52,7 +54,7 @@ pub fn is_media_supported(pathbuf: &PathBuf) -> bool {
   if kind.is_none() { return false; }
 
   if valid_mime_types.contains(&kind.unwrap().mime_type()) {
-    info!("Found: {:?} with type: {:?}", pathbuf, kind.unwrap().mime_type());
+    trace!("Found: {:?} with type: {:?}", pathbuf, kind.unwrap().mime_type());
 
     return true;
   }
@@ -60,6 +62,7 @@ pub fn is_media_supported(pathbuf: &PathBuf) -> bool {
   return false;
 }
 
+/// Scans folders recursively
 pub fn scan_recursively(path: PathBuf, array: &mut Vec<PathBuf>) -> bool {
   let mut state = false;
 
@@ -100,6 +103,7 @@ pub fn scan_recursively(path: PathBuf, array: &mut Vec<PathBuf>) -> bool {
   }
 }
 
+/// scans folder of a given user
 pub fn scan_root(pool: Pool, xdg_data: &str, user_id: i32) {
   // root directory
   let username_option = get_user_username(pool.clone(), user_id);
