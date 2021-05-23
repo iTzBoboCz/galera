@@ -19,5 +19,6 @@ diesel_migrations = "1.4.0"
 log = "0.4.14"
 env_logger = "0.8.3"
 chrono = "0.4.19"
+checksums = "0.7.1"
 
 [dev-dependencies]

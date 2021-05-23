@@ -7,13 +7,14 @@ use crate::diesel::ExpressionMethods;
 use crate::diesel::OptionalExtension;
 use crate::diesel::QueryDsl;
 use crate::schema::folder;
-use crate::schema::photo;
+use crate::schema::media;
 use chrono::NaiveDateTime;
 use db::get_user_username;
 use diesel::Table;
 use infer;
 use std::fs;
 use std::path::PathBuf;
+use checksums::{ hash_file, Algorithm::SHA2512 };
 
 pub fn is_media_supported(pathbuf: &PathBuf) -> bool {
   let valid_mime_types = [
@@ -214,36 +215,36 @@ pub fn scan_select(pool: Pool, parent_folder: Folder, mut path: String, xdg_data
   }
 }
 
+/// Scans user's folder for media
 pub fn scan_folder_media(pool: Pool, parent_folder: Folder, path: String, xdg_data: &str, user_id: i32, username: String) {
-  let mediaVecOption = folder_get_media(PathBuf::from(path.clone()));
-  if mediaVecOption.is_none() { return; }
+  // get files in a folder
+  let media_scanned_option = folder_get_media(PathBuf::from(path.clone()));
+  if media_scanned_option.is_none() { return; }
 
-  let mediaVec = mediaVecOption.unwrap();
+  let media_scanned_vec = media_scanned_option.unwrap();
 
-  if mediaVec.is_empty() { return; }
+  if media_scanned_vec.is_empty() { return; }
 
   let prefix = format!("{}/{}", xdg_data, username);
 
-  // error!("{:?}", path);
-  // warn!("{:?}", mediaVec);
+  for media_scanned in media_scanned_vec {
+    let name = media_scanned.strip_prefix(&path).unwrap();
 
-  for media in mediaVec {
-    let name = media.strip_prefix(&path).unwrap();
-
-    let photo = photo::table
-      .select(photo::id)
-      .filter(photo::dsl::filename.eq(name.display().to_string()).and(photo::owner_id.eq(user_id).and(photo::folder_id.eq(parent_folder.id))))
+    // check wheter the file is already in a database
+    let media = media::table
+      .select(media::id)
+      .filter(media::dsl::filename.eq(name.display().to_string()).and(media::owner_id.eq(user_id).and(media::folder_id.eq(parent_folder.id))))
       .first::<i32>(&pool.clone().get().unwrap())
       .optional()
       .unwrap();
 
-    if photo.is_none() {
-      error!("{:?} doesnt exist in database", media);
+    if media.is_none() {
+      error!("{:?} doesnt exist in database", media_scanned);
 
       // error!("file {} doesnt exist", name.display().to_string());
-      let new_photo = NewPhoto::new(name.display().to_string(), parent_folder.id, user_id, None, 0, 0, NaiveDateTime::from_timestamp(10, 10), String::from(""));
-      diesel::insert_into(photo::table)
-        .values(new_photo)
+      let new_media = NewMedia::new(name.display().to_string(), parent_folder.id, user_id, None, 0, 0, NaiveDateTime::from_timestamp(10, 10), hash_file(&media_scanned, SHA2512));
+      diesel::insert_into(media::table)
+        .values(new_media)
         .execute(&pool.get().unwrap())
         .expect(format!("Error inserting file {:?}", media).as_str());
     }

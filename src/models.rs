@@ -1,4 +1,4 @@
-use super::schema::{user, folder, album, album_invite, photo, favourite_photo};
+use super::schema::{album, album_invite, folder, media, user};
 use chrono::NaiveDateTime;
 
 #[allow(non_camel_case_types)]
@@ -22,6 +22,7 @@ pub struct Folder {
   pub name: String,
 }
 
+/// struct for inserting new folders
 #[derive(Insertable)]
 #[table_name = "folder"]
 pub struct NewFolder {
@@ -63,10 +64,10 @@ pub struct Album_invite {
 //#[table_name = "posts"]
 #[allow(non_camel_case_types)]
 #[derive(Identifiable, Queryable, Associations)]
-#[table_name = "photo"]
+#[table_name = "media"]
 #[belongs_to(Folder, foreign_key = "folder_id")]
 #[belongs_to(User, foreign_key = "owner_id")]
-pub struct Photo {
+pub struct Media {
   pub id: i32,
   pub filename: String,
   pub folder_id: i32,
@@ -78,9 +79,10 @@ pub struct Photo {
   pub sha2_512: String,
 }
 
+/// struct for inserting new media
 #[derive(Insertable)]
-#[table_name = "photo"]
-pub struct NewPhoto {
+#[table_name = "media"]
+pub struct NewMedia {
   pub filename: String,
   pub folder_id: i32,
   pub owner_id: i32,
@@ -91,9 +93,9 @@ pub struct NewPhoto {
   pub sha2_512: String,
 }
 
-impl NewPhoto {
-  pub fn new(filename: String, folder_id: i32, owner_id: i32, album_id: Option<i32>, width: i32, height: i32, date_taken: NaiveDateTime, sha2_512: String) -> NewPhoto {
-    return NewPhoto {
+impl NewMedia {
+  pub fn new(filename: String, folder_id: i32, owner_id: i32, album_id: Option<i32>, width: i32, height: i32, date_taken: NaiveDateTime, sha2_512: String) -> NewMedia {
+    return NewMedia {
       filename,
       folder_id,
       owner_id,
@@ -105,17 +107,3 @@ impl NewPhoto {
     };
   }
 }
-
-#[allow(non_camel_case_types)]
-#[derive(Identifiable, Queryable, Associations)]
-#[table_name = "favourite_photo"]
-#[belongs_to(Photo, foreign_key = "photo_id")]
-#[belongs_to(User, foreign_key = "user_id")]
-pub struct Favourite_photo {
-  pub id: i32,
-  pub photo_id: i32,
-  pub user_id: i32,
-}
-
-// https://github.com/diesel-rs/diesel/issues/616
-// https://stackoverflow.com/questions/56853059/use-of-undeclared-type-or-module-when-using-diesels-belongs-to-attribute

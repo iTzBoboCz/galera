@@ -18,14 +18,6 @@ table! {
 }
 
 table! {
-  favourite_photo (id) {
-    id -> Integer,
-    photo_id -> Integer,
-    user_id -> Integer,
-  }
-}
-
-table! {
   folder (id) {
     id -> Integer,
     owner_id -> Integer,
@@ -35,7 +27,7 @@ table! {
 }
 
 table! {
-  photo (id) {
+  media (id) {
     id -> Integer,
     filename -> Varchar,
     folder_id -> Integer,
@@ -45,6 +37,7 @@ table! {
     height -> Integer,
     date_taken -> Timestamp,
     sha2_512 -> Varchar,
+    favorite -> Bool,
   }
 }
 
@@ -59,18 +52,15 @@ table! {
 joinable!(album -> user (owner_id));
 joinable!(album_invite -> album (album_id));
 joinable!(album_invite -> user (invited_user_id));
-joinable!(favourite_photo -> photo (photo_id));
-joinable!(favourite_photo -> user (user_id));
 joinable!(folder -> user (owner_id));
-joinable!(photo -> album (album_id));
-joinable!(photo -> folder (folder_id));
-joinable!(photo -> user (owner_id));
+joinable!(media -> album (album_id));
+joinable!(media -> folder (folder_id));
+joinable!(media -> user (owner_id));
 
 allow_tables_to_appear_in_same_query!(
   album,
   album_invite,
-  favourite_photo,
   folder,
-  photo,
+  media,
   user,
 );
