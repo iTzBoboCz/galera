@@ -13,7 +13,8 @@ use db::get_user_username;
 use diesel::Table;
 use infer;
 use std::fs;
-use std::path::PathBuf;
+use std::fs::create_dir_all;
+use std::path::{ Path, PathBuf };
 use checksums::{ hash_file, Algorithm::SHA2512 };
 
 /// checks if the file type is supported.
@@ -116,6 +117,15 @@ pub fn scan_root(pool: Pool, xdg_data: &str, user_id: i32) {
   let mut found_folders: Vec<PathBuf> = Vec::new();
 
   info!("Scanning files and folders for user {} started.", username);
+
+  if !Path::new(&current_dir).exists() {
+    let result = create_dir_all(Path::new(&current_dir));
+
+    if result.is_err() {
+      error!("Failed to create user folder.");
+      return;
+    }
+  } 
 
   let folders = fs::read_dir(current_dir.clone()).unwrap()
     .into_iter()
