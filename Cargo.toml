@@ -9,7 +9,7 @@ license = "GPL-3.0-only"
 
 [dependencies]
 infer = "0.4.0"
-rocket = { git = "https://github.com/SergioBenitez/Rocket", branch = "master", default-features = false }
+rocket = { version = "0.5.0-rc.1", default-features = false }
 serde_json = "1.0.61"
 serde = { version = "1.0", features = ["derive"] }
 r2d2 = "0.8.9"
@@ -25,9 +25,8 @@ proc-macro2 = "1.0.27"
 [dev-dependencies]
 
 [dependencies.rocket_sync_db_pools]
-git = "https://github.com/SergioBenitez/Rocket"
+version = "0.1.0-rc.1"
 features = ["diesel_mysql_pool"]
-branch = "master"
 
 [dependencies.rocket_okapi]
 git = "https://github.com/mateuszkj/okapi/"

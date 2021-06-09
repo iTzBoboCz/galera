@@ -1011,7 +1011,7 @@ dependencies = [
 [[package]]
 name = "okapi"
 version = "0.5.0-alpha-1"
-source = "git+https://github.com/mateuszkj/okapi/?branch=async2#d98b9a74c9b37662c387102d24b934164b03ae9c"
+source = "git+https://github.com/mateuszkj/okapi/?branch=async2#be3b9f8e2d7e2c6893c4c2bf4a6a5033a88286c0"
 dependencies = [
  "schemars",
  "serde",
@@ -1271,8 +1271,9 @@ dependencies = [
 
 [[package]]
 name = "rocket"
-version = "0.5.0-dev"
-source = "git+https://github.com/SergioBenitez/Rocket?branch=master#1aa551ada6fd682f9122e05746cf14c80899a811"
+version = "0.5.0-rc.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0a71c18c42a0eb15bf3816831caf0dad11e7966f2a41aaf486a701979c4dd1f2"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -1309,8 +1310,9 @@ dependencies = [
 
 [[package]]
 name = "rocket_codegen"
-version = "0.5.0-dev"
-source = "git+https://github.com/SergioBenitez/Rocket?branch=master#1aa551ada6fd682f9122e05746cf14c80899a811"
+version = "0.5.0-rc.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "66f5fa462f7eb958bba8710c17c5d774bbbd59809fa76fb1957af7e545aea8bb"
 dependencies = [
  "devise",
  "glob",
@@ -1324,8 +1326,9 @@ dependencies = [
 
 [[package]]
 name = "rocket_http"
-version = "0.5.0-dev"
-source = "git+https://github.com/SergioBenitez/Rocket?branch=master#1aa551ada6fd682f9122e05746cf14c80899a811"
+version = "0.5.0-rc.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "23c8b7d512d2fcac2316ebe590cde67573844b99e6cc9ee0f53375fa16e25ebd"
 dependencies = [
  "cookie",
  "either",
@@ -1352,7 +1355,7 @@ dependencies = [
 [[package]]
 name = "rocket_okapi"
 version = "0.6.0-alpha-1"
-source = "git+https://github.com/mateuszkj/okapi/?branch=async2#d98b9a74c9b37662c387102d24b934164b03ae9c"
+source = "git+https://github.com/mateuszkj/okapi/?branch=async2#be3b9f8e2d7e2c6893c4c2bf4a6a5033a88286c0"
 dependencies = [
  "okapi",
  "rocket",
@@ -1365,7 +1368,7 @@ dependencies = [
 [[package]]
 name = "rocket_okapi_codegen"
 version = "0.6.0-alpha-1"
-source = "git+https://github.com/mateuszkj/okapi/?branch=async2#d98b9a74c9b37662c387102d24b934164b03ae9c"
+source = "git+https://github.com/mateuszkj/okapi/?branch=async2#be3b9f8e2d7e2c6893c4c2bf4a6a5033a88286c0"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -1376,8 +1379,9 @@ dependencies = [
 
 [[package]]
 name = "rocket_sync_db_pools"
-version = "0.1.0-dev"
-source = "git+https://github.com/SergioBenitez/Rocket?branch=master#1aa551ada6fd682f9122e05746cf14c80899a811"
+version = "0.1.0-rc.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38cfdfebd552d075c368e641c88a5cd6ce1c58c5c710548aeb777abb48830f4b"
 dependencies = [
  "diesel",
  "r2d2",
@@ -1389,8 +1393,9 @@ dependencies = [
 
 [[package]]
 name = "rocket_sync_db_pools_codegen"
-version = "0.1.0-dev"
-source = "git+https://github.com/SergioBenitez/Rocket?branch=master#1aa551ada6fd682f9122e05746cf14c80899a811"
+version = "0.1.0-rc.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5267808c094db5366e1d8925aaf9f2ce05ff9b3bd92cb18c7040a1fe219c2e25"
 dependencies = [
  "devise",
  "quote",
