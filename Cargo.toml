@@ -28,3 +28,15 @@ proc-macro2 = "1.0.27"
 git = "https://github.com/SergioBenitez/Rocket"
 features = ["diesel_mysql_pool"]
 branch = "master"
+
+[dependencies.rocket_okapi]
+git = "https://github.com/mateuszkj/okapi/"
+branch = "async2"
+
+[dependencies.rocket_okapi_codegen]
+git = "https://github.com/mateuszkj/okapi/"
+branch = "async2"
+
+[dependencies.okapi]
+git = "https://github.com/mateuszkj/okapi/"
+branch = "async2"

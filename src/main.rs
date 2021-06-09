@@ -5,11 +5,21 @@ extern crate diesel;
 extern crate rocket;
 
 #[macro_use]
+extern crate rocket_okapi;
+
+#[macro_use]
+extern crate okapi;
+
+#[macro_use]
+extern crate rocket_okapi_codegen;
+
+#[macro_use]
 extern crate log;
 
 #[macro_use]
 extern crate diesel_migrations;
 
+use rocket_okapi::swagger_ui::{ make_swagger_ui, SwaggerUIConfig };
 use std::thread;
 use rocket_sync_db_pools::database;
 use diesel_migrations::embed_migrations;
@@ -27,11 +37,13 @@ mod schema;
 #[database("galera")]
 struct DbConn(diesel::MysqlConnection);
 
+#[openapi]
 #[get("/")]
 async fn index() -> &'static str {
   "Hello, world!"
 }
 
+#[openapi]
 #[get("/scan_media")]
 async fn scan_media(conn: DbConn) -> &'static str {
   let xdg_data = "gallery";
@@ -56,8 +68,15 @@ fn rocket() -> _ {
   rocket::build()
     .attach(DbConn::fairing())
     .attach(AdHoc::on_ignite("Database migration", run_migrations))
-    .mount("/", routes![index])
-    .mount("/", routes![scan_media])
+    // routes_with_openapi![...] will host the openapi document at openapi.json
+    .mount("/", routes_with_openapi![index, scan_media])
+    .mount(
+      "/swagger-ui/",
+      make_swagger_ui(&SwaggerUIConfig {
+        url: "../openapi.json".to_owned(),
+        ..Default::default()
+      })
+    )
 }
 
 /// Runs migrations
