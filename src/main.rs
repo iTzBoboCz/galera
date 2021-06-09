@@ -1,6 +1,8 @@
 #[macro_use]
 extern crate diesel;
-extern crate r2d2;
+
+#[macro_use]
+extern crate rocket;
 
 #[macro_use]
 extern crate log;
@@ -8,54 +10,63 @@ extern crate log;
 #[macro_use]
 extern crate diesel_migrations;
 
-#[allow(unused_imports)]
-use actix_web::{middleware, web, App, HttpServer, Responder};
-use diesel::r2d2::ConnectionManager;
-use diesel::MysqlConnection;
+use std::thread;
+use rocket_sync_db_pools::database;
+use diesel_migrations::embed_migrations;
+use rocket::{Rocket, Build};
+use rocket::fairing::AdHoc;
 
 // mod media;
 // mod errors;
-mod db;
-mod handlers;
+// mod db;
+// mod handlers;
 mod models;
-mod scan;
+//mod scan;
 mod schema;
 
-pub type Pool = r2d2::Pool<ConnectionManager<MysqlConnection>>;
-pub type Manager = ConnectionManager<MysqlConnection>;
+#[database("galera")]
+struct DbConn(diesel::MysqlConnection);
 
-embed_migrations!();
+#[get("/")]
+async fn index() -> &'static str {
+  "Hello, world!"
+}
 
-#[actix_web::main]
-async fn main() -> std::io::Result<()> {
+#[get("/scan_media")]
+async fn scan_media(conn: DbConn) -> &'static str {
+  let xdg_data = "gallery";
+  let user_id: i32 = 1;
+
+  // this thread will run until scanning is complete
+  thread::spawn(|| {
+
+    // scan::scan_root(conn, xdg_data, user_id);
+  });
+
+  "immediate response"
+}
+
+#[launch]
+fn rocket() -> _ {
   env_logger::init();
 
   dotenv::dotenv().ok();
-  std::env::set_var("RUST_LOG", "actix_web=debug");
-  let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+  // std::env::set_var("RUST_LOG", "actix_web=debug");
 
-  // create db connection pool
-  let manager = Manager::new(database_url);
-  let pool: Pool = r2d2::Pool::builder().build(manager).unwrap();
+  rocket::build()
+    .attach(DbConn::fairing())
+    .attach(AdHoc::on_ignite("Database migration", run_migrations))
+    .mount("/", routes![index])
+    .mount("/", routes![scan_media])
+}
 
-  let migration = embedded_migrations::run(&pool.clone().get().expect("Failed to migrate."));
+/// Runs migrations
+pub async fn run_migrations(rocket: Rocket<Build>) -> Rocket<Build> {
 
-  match migration {
-    Ok(_) => info!("Migration succesful."),
-    Err(_) => warn!("Failed to migrate."),
-  }
+  embed_migrations!();
 
-  let xdg_data = "gallery";
-  let user_id: i32 = 1;
-  scan::scan_root(pool.clone(), xdg_data, user_id);
+  let conn = DbConn::get_one(&rocket).await.expect("database connection");
+  conn.run(|c| embedded_migrations::run(c)).await.expect("can run migrations");
 
-  HttpServer::new(move || {
-    App::new()
-      .wrap(middleware::Logger::default())
-      .data(pool.clone())
-      .route("/user/username/{name}", web::get().to(handlers::test))
-  })
-  .bind("localhost:3030")?
-  .run()
-  .await
+  rocket
 }
