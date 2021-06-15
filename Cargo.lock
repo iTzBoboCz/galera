@@ -616,7 +616,6 @@ dependencies = [
  "r2d2",
  "rocket",
  "rocket_okapi",
- "rocket_okapi_codegen",
  "rocket_sync_db_pools",
  "serde",
  "serde_json",
@@ -1011,8 +1010,9 @@ dependencies = [
 
 [[package]]
 name = "okapi"
-version = "0.5.0-alpha-1"
-source = "git+https://github.com/mateuszkj/okapi/?branch=async2#be3b9f8e2d7e2c6893c4c2bf4a6a5033a88286c0"
+version = "0.6.0-alpha-1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bb085e00daf8d75b9dbf0ffdb4738e69503e28898d9641fa8bdc6ad536c7bcf4"
 dependencies = [
  "schemars",
  "serde",
@@ -1355,8 +1355,9 @@ dependencies = [
 
 [[package]]
 name = "rocket_okapi"
-version = "0.6.0-alpha-1"
-source = "git+https://github.com/mateuszkj/okapi/?branch=async2#be3b9f8e2d7e2c6893c4c2bf4a6a5033a88286c0"
+version = "0.7.0-alpha-1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b2f4f48fb070f9f6c56d5663df5fa8a514406207744f4abd84661bfb24efd7d"
 dependencies = [
  "okapi",
  "rocket",
@@ -1368,8 +1369,9 @@ dependencies = [
 
 [[package]]
 name = "rocket_okapi_codegen"
-version = "0.6.0-alpha-1"
-source = "git+https://github.com/mateuszkj/okapi/?branch=async2#be3b9f8e2d7e2c6893c4c2bf4a6a5033a88286c0"
+version = "0.7.0-alpha-1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "88ccf1550e1c806461a6b08e2ab64eb10701d41bf50bde59ab9aa3a57ab14d41"
 dependencies = [
  "darling",
  "proc-macro2",

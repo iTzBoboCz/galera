@@ -8,12 +8,6 @@ extern crate rocket;
 extern crate rocket_okapi;
 
 #[macro_use]
-extern crate okapi;
-
-#[macro_use]
-extern crate rocket_okapi_codegen;
-
-#[macro_use]
 extern crate log;
 
 #[macro_use]

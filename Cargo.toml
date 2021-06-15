@@ -22,21 +22,11 @@ chrono = "0.4.19"
 checksums = "0.7.1"
 proc-macro2 = "1.0.27"
 futures = "0.3.15"
+rocket_okapi = "0.7.0-alpha-1"
+okapi = "0.6.0-alpha-1"
 
 [dev-dependencies]
 
 [dependencies.rocket_sync_db_pools]
 version = "0.1.0-rc.1"
 features = ["diesel_mysql_pool"]
-
-[dependencies.rocket_okapi]
-git = "https://github.com/mateuszkj/okapi/"
-branch = "async2"
-
-[dependencies.rocket_okapi_codegen]
-git = "https://github.com/mateuszkj/okapi/"
-branch = "async2"
-
-[dependencies.okapi]
-git = "https://github.com/mateuszkj/okapi/"
-branch = "async2"
