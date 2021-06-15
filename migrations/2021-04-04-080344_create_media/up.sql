@@ -8,7 +8,6 @@ CREATE TABLE `media` (
 	`height` INT NOT NULL,
 	`date_taken` TIMESTAMP NOT NULL,
 	`sha2_512` varchar(128) NOT NULL,
-  `favorite` BOOLEAN NOT NULL DEFAULT 0,
 	CONSTRAINT `media_fk0` FOREIGN KEY (`folder_id`) REFERENCES `folder`(`id`),
   CONSTRAINT `media_fk1` FOREIGN KEY (`owner_id`) REFERENCES `user`(`id`),
   CONSTRAINT `media_fk2` FOREIGN KEY (`album_id`) REFERENCES `album`(`id`)
