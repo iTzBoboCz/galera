@@ -11,12 +11,18 @@ use crate::schema::media;
 use chrono::NaiveDateTime;
 use db::get_user_username;
 use diesel::Table;
+use diesel::dsl::sql;
+use diesel::sql_query;
+use diesel::sql_types::Text;
+use diesel::types::Varchar;
 use infer;
 use std::fs;
 use std::fs::create_dir_all;
 use std::path::{ Path, PathBuf };
+use std::thread::current;
 use checksums::{ hash_file, Algorithm::SHA2512 };
 use futures::executor;
+use uuid::Uuid;
 
 /// checks if the file type is supported.
 /// returns **true** for example for **image/jpeg**
@@ -178,9 +184,9 @@ pub async fn add_folders_to_db(conn: &DbConn, paths: Vec<PathBuf>, xdg_data: &st
       if folder_id.is_none() {
         let new_folder = NewFolder::new(user_id, s.clone(), parent);
 
-        // insert_folder(conn, new_folder, s, path.clone());
+        insert_folder(conn, new_folder, s, path.clone()).await;
 
-        let last_insert_id = executor::block_on(db::get_last_insert_id(conn));
+        let last_insert_id = db::get_last_insert_id(conn).await;
 
         if last_insert_id.is_none() {
           error!("Last insert id was not returned. This may happen if restarting MySQL during scanning.");
@@ -203,7 +209,7 @@ pub async fn scan_folders_for_media(conn: &DbConn, xdg_data: &str, user_id: i32)
 
   let username = username_option.unwrap();
 
-  let root_folders = executor::block_on(select_root_folders(conn, user_id));
+  let root_folders = select_root_folders(conn, user_id).await;
 
   for root_folder in root_folders {
     scan_select(conn, root_folder, String::new(), xdg_data, user_id, username.clone());
@@ -298,6 +304,63 @@ pub async fn select_subfolders(conn: &DbConn, parent_folder: Folder, user_id: i3
       .unwrap()
   }).await
 }
+
+/// Selects folder from folder id.
+/// # Example
+/// We're selecting folder with id 10.
+/// ```
+/// let folder: Folder = select_folder(&conn, 10);
+/// ```
+pub async fn select_folder(conn: &DbConn, folder_id: i32) -> Option<models::Folder> {
+  conn.run(move |c| {
+    folder::table
+      .select(folder::table::all_columns())
+      .filter(folder::dsl::id.eq(folder_id))
+      .first::<Folder>(c)
+      .optional()
+      .unwrap()
+  }).await
+}
+
+/// Recursively selects parent folder.\
+/// You need to pass a vector to which the folders will be appended.
+/// # Example
+/// We're selecting all parent folders of a folder with id 10, where user id is 1.
+/// ```
+/// let mut folders: Vec<Folder> = vec!();
+/// let current_folder = Folder { id: 15, owner_id: 1, parent: Some(10), name: "some_folder" }
+/// folders.push(current_folder.clone());
+///
+/// scan::select_parent_folder_recursive(&conn, current_folder, user_id, &mut folders);
+///
+/// // This produces:
+/// // folders: [Folder { id: 15, owner_id: 1, parent: Some(10), name: "some_folder" }, Folder { id: 10, owner_id: 1, parent: None, name: "root_folder" }]
+/// ```
+// TODO: Write faster recursive function with diesel's sql_query()
+pub fn select_parent_folder_recursive(conn: &DbConn, current_folder: Folder, user_id: i32, vec: &mut Vec<Folder>) -> bool {
+  let parent = executor::block_on(select_parent_folder(conn, current_folder, user_id));
+  if parent.is_none() { return false; }
+
+  vec.push(parent.clone().unwrap());
+
+  return select_parent_folder_recursive(conn, parent.clone().unwrap(), user_id, vec);
+}
+
+/// Selects parent folder.
+/// # Example
+/// We're selecting parent folder of a folder with id 10, where user id is 1.
+/// ```
+/// let current_folder: Folder = select_folder(&conn, 10);
+/// let parent_folder: Option<Folder> = select_parent_folder(&conn, current_folder, 1);
+/// ```
+pub async fn select_parent_folder(conn: &DbConn, current_folder: Folder, user_id: i32) -> Option<Folder> {
+  if current_folder.parent.is_none() { return None; }
+  conn.run(move |c| {
+    folder::table
+      .select(folder::table::all_columns())
+      .filter(folder::dsl::id.eq(current_folder.parent.unwrap()).and(folder::owner_id.eq(user_id)))
+      .first::<Folder>(c)
+      .ok()
   }).await
 }
 
@@ -327,7 +390,7 @@ pub async fn insert_media(conn: &DbConn, name: String, parent_folder: Folder, me
   }).await;
 }
 
-pub async fn insert_folder(conn: &DbConn, new_folder: NewFolder, name: &'static str, path: PathBuf) {
+pub async fn insert_folder(conn: &DbConn, new_folder: NewFolder, name: String, path: PathBuf) {
   conn.run(move |c| {
     let insert = diesel::insert_into(folder::table)
       .values(new_folder)

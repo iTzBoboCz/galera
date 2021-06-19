@@ -1,9 +1,18 @@
 use std::thread;
-use diesel::{RunQueryDsl, query_dsl::methods::SelectDsl};
+use diesel::RunQueryDsl;
+use diesel::Table;
+use futures::executor;
+use rocket::fs::NamedFile;
+use crate::db::get_user_username;
+use crate::diesel::OptionalExtension;
+use crate::diesel::QueryDsl;
+use crate::diesel::ExpressionMethods;
+use crate::schema::media;
 // use diesel::query_dsl::methods::Fi
 
 use crate::DbConn;
 use crate::scan;
+use crate::models::{self, *};
 
 #[openapi]
 #[get("/")]
@@ -29,9 +38,44 @@ pub async fn scan_media(conn: DbConn) -> &'static str {
 }
 
 #[openapi]
-#[get("/media/<media_id>")]
-pub async fn get_media_by_id(conn: DbConn, media_id: String) -> String {
-  media_id
+#[get("/media/<media_uuid>")]
+pub async fn get_media_by_uuid(conn: DbConn, media_uuid: String) -> Option<NamedFile> {
+  let media_option: Option<models::Media> = conn.run(|c| {
+    return crate::schema::media::table
+      .select(crate::schema::media::table::all_columns())
+      .filter(media::dsl::uuid.eq(media_uuid))
+      .first::<Media>(c)
+      .optional()
+      .unwrap();
+  }).await;
+
+  if media_option.is_none() { return None; }
+
+  let media = media_option.unwrap();
+
+  let xdg_data = "gallery";
+  let user_id = 1;
+
+  let mut folders: Vec<Folder> = vec!();
+
+  let current_folder = executor::block_on(scan::select_folder(&conn, media.folder_id));
+  if current_folder.is_none() { return None; }
+  folders.push(current_folder.clone().unwrap());
+
+  scan::select_parent_folder_recursive(&conn, current_folder.unwrap(), user_id, &mut folders);
+
+  let relative_path = format!("{}/{}/", xdg_data, get_user_username(&conn, media.owner_id).await.unwrap());
+
+  let mut path = relative_path;
+
+  if folders.len() > 0 {
+    for folder in folders.iter().rev() {
+      path += format!("{}/", folder.name).as_str();
+    }
+  }
+  path += &media.filename;
+
+  NamedFile::open(path).await.ok()
 }
 
 #[openapi]
