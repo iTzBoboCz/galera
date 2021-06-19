@@ -44,6 +44,7 @@ table! {
     width -> Integer,
     height -> Integer,
     date_taken -> Timestamp,
+    uuid -> Varchar,
     sha2_512 -> Varchar,
   }
 }

@@ -76,6 +76,7 @@ pub struct Media {
   pub width: i32,
   pub height: i32,
   pub date_taken: NaiveDateTime,
+  pub uuid: String,
   pub sha2_512: String,
 }
 
@@ -90,11 +91,12 @@ pub struct NewMedia {
   pub width: i32,
   pub height: i32,
   pub date_taken: NaiveDateTime,
+  pub uuid: String,
   pub sha2_512: String,
 }
 
 impl NewMedia {
-  pub fn new(filename: String, folder_id: i32, owner_id: i32, album_id: Option<i32>, width: i32, height: i32, date_taken: NaiveDateTime, sha2_512: String) -> NewMedia {
+  pub fn new(filename: String, folder_id: i32, owner_id: i32, album_id: Option<i32>, width: i32, height: i32, date_taken: NaiveDateTime, uuid: String, sha2_512: String) -> NewMedia {
     return NewMedia {
       filename,
       folder_id,
@@ -103,6 +105,7 @@ impl NewMedia {
       width,
       height,
       date_taken,
+      uuid,
       sha2_512,
     };
   }
