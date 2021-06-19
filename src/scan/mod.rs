@@ -176,7 +176,7 @@ pub async fn add_folders_to_db(conn: &DbConn, paths: Vec<PathBuf>, xdg_data: &st
       folder_id = select_child_folder_id(conn, s.clone(), parent, user_id).await;
 
       if folder_id.is_none() {
-        let new_folder = NewFolder::new(user_id, s, parent);
+        let new_folder = NewFolder::new(user_id, s.clone(), parent);
 
         // insert_folder(conn, new_folder, s, path.clone());
 
@@ -214,14 +214,14 @@ pub async fn scan_folders_for_media(conn: &DbConn, xdg_data: &str, user_id: i32)
 
 pub fn scan_select(conn: &DbConn, parent_folder: Folder, mut path: String, xdg_data: &str, user_id: i32, username: String) {
   if path == "" {
-    path = format!("{}/{}/{}", xdg_data, username, parent_folder.name);
+    path = format!("{}/{}/{}/", xdg_data, username, parent_folder.name);
   }
   let folders: Vec<models::Folder> = executor::block_on(select_subfolders(conn, parent_folder.clone(), user_id));
 
   scan_folder_media(conn, parent_folder.clone(), path.clone(), xdg_data, user_id, username.clone());
 
   for folder in folders {
-    scan_select(conn, folder.clone(), format!("{}/{}", path.clone(), folder.name), xdg_data, user_id, username.clone());
+    scan_select(conn, folder.clone(), format!("{}/{}/", path.clone(), folder.name), xdg_data, user_id, username.clone());
   }
 }
 
@@ -235,7 +235,7 @@ pub fn scan_folder_media(conn: &DbConn, parent_folder: Folder, path: String, xdg
 
   if media_scanned_vec.is_empty() { return; }
 
-  let prefix = format!("{}/{}", xdg_data, username);
+  let prefix = format!("{}/{}/", xdg_data, username);
 
   for media_scanned in media_scanned_vec {
 
@@ -265,12 +265,12 @@ pub async fn select_child_folder_id(conn: &DbConn, name: String, parent: Option<
 
   } else {
     conn.run(move |c| {
-    folder::table
-      .select(folder::id)
-      .filter(folder::dsl::parent.eq(parent).and(folder::dsl::name.eq(name).and(folder::owner_id.eq(user_id))))
-      .first::<i32>(c)
-      .optional()
-      .unwrap()
+      folder::table
+        .select(folder::id)
+        .filter(folder::dsl::parent.eq(parent).and(folder::dsl::name.eq(name).and(folder::owner_id.eq(user_id))))
+        .first::<i32>(c)
+        .optional()
+        .unwrap()
     }).await
   }
 }
@@ -288,26 +288,28 @@ pub async fn select_root_folders(conn: &DbConn, user_id: i32) -> Vec<models::Fol
 }
 
 pub async fn select_subfolders(conn: &DbConn, parent_folder: Folder, user_id: i32) -> Vec<models::Folder> {
-    conn.run(move |c| {
-      folder::table
-    .select(folder::table::all_columns())
-    .filter(folder::dsl::parent.eq(parent_folder.id).and(folder::owner_id.eq(user_id)))
-    .get_results::<Folder>(c)
-    .optional()
-    .unwrap()
-    .unwrap()
+  conn.run(move |c| {
+    folder::table
+      .select(folder::table::all_columns())
+      .filter(folder::dsl::parent.eq(parent_folder.id).and(folder::owner_id.eq(user_id)))
+      .get_results::<Folder>(c)
+      .optional()
+      .unwrap()
+      .unwrap()
+  }).await
+}
   }).await
 }
 
 pub async fn check_if_media_present(conn: &DbConn, name: String, parent_folder: Folder, user_id: i32) -> Option<i32> {
   conn.run(move |c| {
-  // check wheter the file is already in a database
-  return media::table
-    .select(media::id)
-    .filter(media::dsl::filename.eq(name).and(media::owner_id.eq(user_id).and(media::folder_id.eq(parent_folder.id))))
-    .first::<i32>(c)
-    .optional()
-    .unwrap();
+    // check wheter the file is already in a database
+    return media::table
+      .select(media::id)
+      .filter(media::dsl::filename.eq(name).and(media::owner_id.eq(user_id).and(media::folder_id.eq(parent_folder.id))))
+      .first::<i32>(c)
+      .optional()
+      .unwrap();
   }).await
 }
 
@@ -333,7 +335,7 @@ pub async fn insert_folder(conn: &DbConn, new_folder: NewFolder, name: &'static 
       .expect(format!("Error scanning folder {} in {}", name, path.display().to_string()).as_str());
 
     return insert;
-    }).await;
+  }).await;
 }
 
 pub fn folder_get_media(dir: PathBuf) -> Option<Vec<PathBuf>> {
