@@ -1,15 +1,15 @@
-use crate::DbConn;
 use crate::db;
 use crate::models::{self, *};
-use crate::schema::media;
 use crate::scan;
+use crate::schema::media;
+use crate::DbConn;
+use diesel::ExpressionMethods;
+use diesel::OptionalExtension;
+use diesel::QueryDsl;
 use diesel::RunQueryDsl;
 use diesel::Table;
 use futures::executor;
 use rocket::fs::NamedFile;
-use diesel::OptionalExtension;
-use diesel::QueryDsl;
-use diesel::ExpressionMethods;
 
 #[openapi]
 #[get("/")]

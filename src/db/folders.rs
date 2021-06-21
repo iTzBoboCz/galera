@@ -1,12 +1,12 @@
-use crate::DbConn;
 use crate::models::{self, *};
 use crate::schema::folder;
+use crate::DbConn;
 use diesel::BoolExpressionMethods;
 use diesel::ExpressionMethods;
-use diesel::RunQueryDsl;
 use diesel::OptionalExtension;
-use diesel::Table;
 use diesel::QueryDsl;
+use diesel::RunQueryDsl;
+use diesel::Table;
 use std::path::PathBuf;
 
 pub async fn insert_folder(conn: &DbConn, new_folder: NewFolder, name: String, path: PathBuf) {
@@ -101,4 +101,3 @@ pub async fn select_parent_folder(conn: &DbConn, current_folder: Folder, user_id
       .ok()
   }).await
 }
-

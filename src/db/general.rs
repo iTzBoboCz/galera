@@ -1,8 +1,8 @@
 use crate::DbConn;
-use diesel::RunQueryDsl;
+use diesel::select;
 use diesel::sql_types::Integer;
 use diesel::OptionalExtension;
-use diesel::select;
+use diesel::RunQueryDsl;
 
 /// Returns last inserted id.
 /// # Example

@@ -1,11 +1,11 @@
-use crate::DbConn;
 use crate::db;
 use crate::models::{self, *};
+use crate::DbConn;
+use futures::executor;
 use infer;
 use std::fs;
 use std::fs::create_dir_all;
-use std::path::{ Path, PathBuf };
-use futures::executor;
+use std::path::{Path, PathBuf};
 
 /// checks if the file type is supported.
 /// returns **true** for example for **image/jpeg**

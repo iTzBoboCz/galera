@@ -1,15 +1,15 @@
-use crate::DbConn;
 use crate::models::*;
 use crate::schema::media;
-use checksums::{ hash_file, Algorithm::SHA2512 };
+use crate::DbConn;
+use checksums::{hash_file, Algorithm::SHA2512};
+use chrono::NaiveDateTime;
 use diesel::BoolExpressionMethods;
 use diesel::ExpressionMethods;
-use diesel::RunQueryDsl;
-use diesel::QueryDsl;
 use diesel::OptionalExtension;
-use chrono::NaiveDateTime;
-use uuid::Uuid;
+use diesel::QueryDsl;
+use diesel::RunQueryDsl;
 use std::path::PathBuf;
+use uuid::Uuid;
 
 /// Checks whether a specific file is already present in a database.
 /// # Example

@@ -1,9 +1,9 @@
 use crate::schema::user;
 use crate::DbConn;
 use diesel::ExpressionMethods;
-use diesel::RunQueryDsl;
 use diesel::OptionalExtension;
 use diesel::QueryDsl;
+use diesel::RunQueryDsl;
 
 /// Gets user's ID from username.
 /// # Example
