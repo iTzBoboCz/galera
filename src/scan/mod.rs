@@ -1,28 +1,11 @@
 use crate::DbConn;
 use crate::db;
-use crate::diesel::RunQueryDsl;
 use crate::models::{self, *};
-use crate::diesel::BoolExpressionMethods;
-use crate::diesel::ExpressionMethods;
-use crate::diesel::OptionalExtension;
-use crate::diesel::QueryDsl;
-use crate::schema::folder;
-use crate::schema::media;
-use chrono::NaiveDateTime;
-use db::get_user_username;
-use diesel::Table;
-use diesel::dsl::sql;
-use diesel::sql_query;
-use diesel::sql_types::Text;
-use diesel::types::Varchar;
 use infer;
 use std::fs;
 use std::fs::create_dir_all;
 use std::path::{ Path, PathBuf };
-use std::thread::current;
-use checksums::{ hash_file, Algorithm::SHA2512 };
 use futures::executor;
-use uuid::Uuid;
 
 /// checks if the file type is supported.
 /// returns **true** for example for **image/jpeg**
@@ -114,7 +97,7 @@ pub fn scan_recursively(path: PathBuf, array: &mut Vec<PathBuf>) -> bool {
 /// scans folder of a given user
 pub async fn scan_root(conn: &DbConn, xdg_data: &str, user_id: i32) {
   // root directory
-  let username_option = get_user_username(conn, user_id).await;
+  let username_option = db::users::get_user_username(conn, user_id).await;
   if username_option.is_none() { return; }
 
   let username = username_option.unwrap();
@@ -157,7 +140,7 @@ pub async fn add_folders_to_db(conn: &DbConn, paths: Vec<PathBuf>, xdg_data: &st
   //   return get_user_username(c, user_id).await;
   // }).await;
 
-  let username_option = get_user_username(conn, user_id).await;
+  let username_option = db::users::get_user_username(conn, user_id).await;
   if username_option.is_none() { return; }
 
   let username = username_option.unwrap();
@@ -179,14 +162,14 @@ pub async fn add_folders_to_db(conn: &DbConn, paths: Vec<PathBuf>, xdg_data: &st
         parent = None;
       }
 
-      folder_id = select_child_folder_id(conn, s.clone(), parent, user_id).await;
+      folder_id = db::folders::select_child_folder_id(conn, s.clone(), parent, user_id).await;
 
       if folder_id.is_none() {
         let new_folder = NewFolder::new(user_id, s.clone(), parent);
 
-        insert_folder(conn, new_folder, s, path.clone()).await;
+        db::folders::insert_folder(conn, new_folder, s, path.clone()).await;
 
-        let last_insert_id = db::get_last_insert_id(conn).await;
+        let last_insert_id = db::general::get_last_insert_id(conn).await;
 
         if last_insert_id.is_none() {
           error!("Last insert id was not returned. This may happen if restarting MySQL during scanning.");
@@ -204,12 +187,12 @@ pub async fn add_folders_to_db(conn: &DbConn, paths: Vec<PathBuf>, xdg_data: &st
 }
 
 pub async fn scan_folders_for_media(conn: &DbConn, xdg_data: &str, user_id: i32) {
-  let username_option = get_user_username(conn, user_id).await;
+  let username_option = db::users::get_user_username(conn, user_id).await;
   if username_option.is_none() { return; }
 
   let username = username_option.unwrap();
 
-  let root_folders = select_root_folders(conn, user_id).await;
+  let root_folders = db::folders::select_root_folders(conn, user_id).await;
 
   for root_folder in root_folders {
     scan_select(conn, root_folder, String::new(), xdg_data, user_id, username.clone());
@@ -222,7 +205,7 @@ pub fn scan_select(conn: &DbConn, parent_folder: Folder, mut path: String, xdg_d
   if path == "" {
     path = format!("{}/{}/{}/", xdg_data, username, parent_folder.name);
   }
-  let folders: Vec<models::Folder> = executor::block_on(select_subfolders(conn, parent_folder.clone(), user_id));
+  let folders: Vec<models::Folder> = executor::block_on(db::folders::select_subfolders(conn, parent_folder.clone(), user_id));
 
   scan_folder_media(conn, parent_folder.clone(), path.clone(), xdg_data, user_id, username.clone());
 
@@ -248,78 +231,14 @@ pub fn scan_folder_media(conn: &DbConn, parent_folder: Folder, path: String, xdg
     let media_string = media_scanned.display().to_string();
     let name = media_string.strip_prefix(&path).unwrap().to_string().to_owned();
 
-    let media: Option<i32> = executor::block_on(check_if_media_present(conn, name.clone(), parent_folder.clone(), user_id));
+    let media: Option<i32> = executor::block_on(db::media::check_if_media_present(conn, name.clone(), parent_folder.clone(), user_id));
 
     if media.is_none() {
       error!("{:?} doesnt exist in database", media_scanned);
 
-      executor::block_on(insert_media(conn, name, parent_folder.clone(), media_scanned, user_id));
+      executor::block_on(db::media::insert_media(conn, name, parent_folder.clone(), media_scanned, user_id));
     }
   }
-}
-
-pub async fn select_child_folder_id(conn: &DbConn, name: String, parent: Option<i32>, user_id: i32) -> Option<i32> {
-  if parent.is_none() {
-    conn.run(move |c| {
-      folder::table
-        .select(folder::id)
-        .filter(folder::dsl::parent.is_null().and(folder::dsl::name.eq(name).and(folder::owner_id.eq(user_id))))
-        .first::<i32>(c)
-        .optional()
-        .unwrap()
-    }).await
-
-  } else {
-    conn.run(move |c| {
-      folder::table
-        .select(folder::id)
-        .filter(folder::dsl::parent.eq(parent).and(folder::dsl::name.eq(name).and(folder::owner_id.eq(user_id))))
-        .first::<i32>(c)
-        .optional()
-        .unwrap()
-    }).await
-  }
-}
-
-pub async fn select_root_folders(conn: &DbConn, user_id: i32) -> Vec<models::Folder> {
-  conn.run(move |c| {
-    folder::table
-      .select(folder::table::all_columns())
-      .filter(folder::dsl::parent.is_null().and(folder::owner_id.eq(user_id)))
-      .get_results::<Folder>(c)
-      .optional()
-      .unwrap()
-      .unwrap()
-  }).await
-}
-
-pub async fn select_subfolders(conn: &DbConn, parent_folder: Folder, user_id: i32) -> Vec<models::Folder> {
-  conn.run(move |c| {
-    folder::table
-      .select(folder::table::all_columns())
-      .filter(folder::dsl::parent.eq(parent_folder.id).and(folder::owner_id.eq(user_id)))
-      .get_results::<Folder>(c)
-      .optional()
-      .unwrap()
-      .unwrap()
-  }).await
-}
-
-/// Selects folder from folder id.
-/// # Example
-/// We're selecting folder with id 10.
-/// ```
-/// let folder: Folder = select_folder(&conn, 10);
-/// ```
-pub async fn select_folder(conn: &DbConn, folder_id: i32) -> Option<models::Folder> {
-  conn.run(move |c| {
-    folder::table
-      .select(folder::table::all_columns())
-      .filter(folder::dsl::id.eq(folder_id))
-      .first::<Folder>(c)
-      .optional()
-      .unwrap()
-  }).await
 }
 
 /// Recursively selects parent folder.\
@@ -338,7 +257,7 @@ pub async fn select_folder(conn: &DbConn, folder_id: i32) -> Option<models::Fold
 /// ```
 // TODO: Write faster recursive function with diesel's sql_query()
 pub fn select_parent_folder_recursive(conn: &DbConn, current_folder: Folder, user_id: i32, vec: &mut Vec<Folder>) -> bool {
-  let parent = executor::block_on(select_parent_folder(conn, current_folder, user_id));
+  let parent = executor::block_on(db::folders::select_parent_folder(conn, current_folder, user_id));
   if parent.is_none() { return false; }
 
   vec.push(parent.clone().unwrap());
@@ -346,60 +265,6 @@ pub fn select_parent_folder_recursive(conn: &DbConn, current_folder: Folder, use
   return select_parent_folder_recursive(conn, parent.clone().unwrap(), user_id, vec);
 }
 
-/// Selects parent folder.
-/// # Example
-/// We're selecting parent folder of a folder with id 10, where user id is 1.
-/// ```
-/// let current_folder: Folder = select_folder(&conn, 10);
-/// let parent_folder: Option<Folder> = select_parent_folder(&conn, current_folder, 1);
-/// ```
-pub async fn select_parent_folder(conn: &DbConn, current_folder: Folder, user_id: i32) -> Option<Folder> {
-  if current_folder.parent.is_none() { return None; }
-  conn.run(move |c| {
-    folder::table
-      .select(folder::table::all_columns())
-      .filter(folder::dsl::id.eq(current_folder.parent.unwrap()).and(folder::owner_id.eq(user_id)))
-      .first::<Folder>(c)
-      .ok()
-  }).await
-}
-
-pub async fn check_if_media_present(conn: &DbConn, name: String, parent_folder: Folder, user_id: i32) -> Option<i32> {
-  conn.run(move |c| {
-    // check wheter the file is already in a database
-    return media::table
-      .select(media::id)
-      .filter(media::dsl::filename.eq(name).and(media::owner_id.eq(user_id).and(media::folder_id.eq(parent_folder.id))))
-      .first::<i32>(c)
-      .optional()
-      .unwrap();
-  }).await
-}
-
-pub async fn insert_media(conn: &DbConn, name: String, parent_folder: Folder, media_scanned:PathBuf, user_id: i32) {
-  conn.run(move |c| {
-    // error!("file {} doesnt exist", name.display().to_string());
-    let uuid = Uuid::new_v4().to_string();
-    let new_media = NewMedia::new(name.clone(), parent_folder.id, user_id, None, 0, 0, NaiveDateTime::from_timestamp(10, 10), uuid, hash_file(&media_scanned, SHA2512));
-    let insert = diesel::insert_into(media::table)
-      .values(new_media)
-      .execute(c)
-      .expect(format!("Error inserting file {:?}", name).as_str());
-
-    return insert;
-  }).await;
-}
-
-pub async fn insert_folder(conn: &DbConn, new_folder: NewFolder, name: String, path: PathBuf) {
-  conn.run(move |c| {
-    let insert = diesel::insert_into(folder::table)
-      .values(new_folder)
-      .execute(c)
-      .expect(format!("Error scanning folder {} in {}", name, path.display().to_string()).as_str());
-
-    return insert;
-  }).await;
-}
 
 pub fn folder_get_media(dir: PathBuf) -> Option<Vec<PathBuf>> {
   if !dir.exists() { return None; }

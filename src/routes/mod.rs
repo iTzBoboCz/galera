@@ -1,18 +1,15 @@
-use std::thread;
+use crate::DbConn;
+use crate::db;
+use crate::models::{self, *};
+use crate::schema::media;
+use crate::scan;
 use diesel::RunQueryDsl;
 use diesel::Table;
 use futures::executor;
 use rocket::fs::NamedFile;
-use crate::db::get_user_username;
-use crate::diesel::OptionalExtension;
-use crate::diesel::QueryDsl;
-use crate::diesel::ExpressionMethods;
-use crate::schema::media;
-// use diesel::query_dsl::methods::Fi
-
-use crate::DbConn;
-use crate::scan;
-use crate::models::{self, *};
+use diesel::OptionalExtension;
+use diesel::QueryDsl;
+use diesel::ExpressionMethods;
 
 #[openapi]
 #[get("/")]
@@ -58,13 +55,13 @@ pub async fn get_media_by_uuid(conn: DbConn, media_uuid: String) -> Option<Named
 
   let mut folders: Vec<Folder> = vec!();
 
-  let current_folder = executor::block_on(scan::select_folder(&conn, media.folder_id));
+  let current_folder = executor::block_on(db::folders::select_folder(&conn, media.folder_id));
   if current_folder.is_none() { return None; }
   folders.push(current_folder.clone().unwrap());
 
   scan::select_parent_folder_recursive(&conn, current_folder.unwrap(), user_id, &mut folders);
 
-  let relative_path = format!("{}/{}/", xdg_data, get_user_username(&conn, media.owner_id).await.unwrap());
+  let relative_path = format!("{}/{}/", xdg_data, db::users::get_user_username(&conn, media.owner_id).await.unwrap());
 
   let mut path = relative_path;
 
