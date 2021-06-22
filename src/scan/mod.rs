@@ -6,6 +6,7 @@ use infer;
 use std::fs;
 use std::fs::create_dir_all;
 use std::path::{Path, PathBuf};
+use image;
 
 /// checks if the file type is supported.
 /// returns **true** for example for **image/jpeg**
@@ -236,7 +237,15 @@ pub fn scan_folder_media(conn: &DbConn, parent_folder: Folder, path: String, xdg
     if media.is_none() {
       error!("{:?} doesnt exist in database", media_scanned);
 
-      executor::block_on(db::media::insert_media(conn, name, parent_folder.clone(), media_scanned, user_id));
+      let image_dimensions = image::image_dimensions(media_scanned.clone())
+        .ok();
+
+      if image_dimensions.is_none() {
+        error!("Image {:?} was skipped as its dimensions are unknown.", media_scanned);
+        return;
+      }
+
+      executor::block_on(db::media::insert_media(conn, name, parent_folder.clone(), user_id,  image_dimensions.unwrap(), media_scanned));
     }
   }
 }

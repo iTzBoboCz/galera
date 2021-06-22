@@ -25,6 +25,7 @@ futures = "0.3.15"
 rocket_okapi = "0.7.0-alpha-1"
 okapi = "0.6.0-alpha-1"
 uuid = { version = "0.8.2", features = ["v4"] }
+image = "0.23.14"
 
 [dev-dependencies]
 
