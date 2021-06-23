@@ -41,7 +41,7 @@ fn rocket() -> _ {
     .attach(DbConn::fairing())
     .attach(AdHoc::on_ignite("Database migration", run_migrations))
     // routes_with_openapi![...] will host the openapi document at openapi.json
-    .mount("/", routes_with_openapi![routes::index, routes::scan_media, routes::get_media_by_uuid, routes::test])
+    .mount("/", routes_with_openapi![routes::index, routes::media_structure, routes::scan_media, routes::get_media_by_uuid, routes::test])
     .mount(
       "/swagger-ui/",
       make_swagger_ui(&SwaggerUIConfig {

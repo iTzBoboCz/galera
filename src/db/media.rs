@@ -8,6 +8,7 @@ use diesel::ExpressionMethods;
 use diesel::OptionalExtension;
 use diesel::QueryDsl;
 use diesel::RunQueryDsl;
+use diesel::Table;
 use std::path::PathBuf;
 use uuid::Uuid;
 
@@ -41,4 +42,24 @@ pub async fn insert_media(conn: &DbConn, name: String, parent_folder: Folder, us
 
     return insert;
   }).await;
+}
+
+pub async fn get_media_structure(conn: &DbConn, user_id: i32) -> Vec<crate::routes::MediaResponse> {
+  let structure: Vec<Media> = conn.run(move |c| {
+    return media::table
+      .select(media::table::all_columns())
+      .filter(media::owner_id.eq(user_id))
+      .load::<Media>(c)
+      .unwrap()
+  }).await;
+
+  let mut vec: Vec<crate::routes::MediaResponse> = vec!();
+
+  for response in structure {
+    vec.push(
+      crate::routes::MediaResponse { filename: response.filename, owner_id: response.owner_id, album_id: response.album_id, width: response.width, height: response.height, date_taken: response.date_taken.to_string(), uuid: response.uuid }
+    )
+  }
+
+  return vec;
 }

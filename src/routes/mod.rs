@@ -10,11 +10,35 @@ use diesel::RunQueryDsl;
 use diesel::Table;
 use futures::executor;
 use rocket::fs::NamedFile;
+use serde::{Deserialize, Serialize};
+use schemars::JsonSchema;
+use rocket::serde::json::Json;
 
 #[openapi]
 #[get("/")]
 pub async fn index() -> &'static str {
   "Hello, world!"
+}
+
+#[derive(Serialize, Deserialize, JsonSchema, Queryable)]
+pub struct MediaResponse {
+  pub filename: String,
+  pub owner_id: i32,
+  pub album_id: Option<i32>,
+  pub width: u32,
+  pub height: u32,
+  pub date_taken: String,
+  pub uuid: String,
+}
+
+#[openapi]
+#[get("/media")]
+pub async fn media_structure(conn: DbConn) -> Json<Vec<MediaResponse>> {
+  let user_id: i32 = 1;
+
+  let structure = db::media::get_media_structure(&conn, user_id).await;
+
+  Json(structure)
 }
 
 // https://api.rocket.rs/master/rocket/struct.State.html
