@@ -27,7 +27,7 @@ pub struct MediaResponse {
   pub album_id: Option<i32>,
   pub width: u32,
   pub height: u32,
-  pub date_taken: String,
+  pub date_taken: chrono::NaiveDateTime,
   pub uuid: String,
 }
 

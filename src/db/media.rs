@@ -57,7 +57,7 @@ pub async fn get_media_structure(conn: &DbConn, user_id: i32) -> Vec<crate::rout
 
   for response in structure {
     vec.push(
-      crate::routes::MediaResponse { filename: response.filename, owner_id: response.owner_id, album_id: response.album_id, width: response.width, height: response.height, date_taken: response.date_taken.to_string(), uuid: response.uuid }
+      crate::routes::MediaResponse { filename: response.filename, owner_id: response.owner_id, album_id: response.album_id, width: response.width, height: response.height, date_taken: response.date_taken, uuid: response.uuid }
     )
   }
 
