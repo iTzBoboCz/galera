@@ -1,3 +1,4 @@
+use crate::auth::Claims;
 use crate::db;
 use crate::models::{self, *};
 use crate::scan;

@@ -26,6 +26,7 @@ mod routes;
 mod models;
 mod scan;
 mod schema;
+mod auth;
 
 #[database("galera")]
 pub struct DbConn(diesel::MysqlConnection);
