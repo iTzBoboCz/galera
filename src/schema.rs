@@ -54,6 +54,7 @@ table! {
     id -> Integer,
     username -> Varchar,
     email -> Varchar,
+    password -> Varchar,
   }
 }
 
