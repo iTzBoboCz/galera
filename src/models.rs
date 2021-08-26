@@ -1,5 +1,8 @@
 use super::schema::{album, album_invite, folder, media, user};
 use chrono::NaiveDateTime;
+use rocket::form::FromForm;
+use serde::{Serialize, Deserialize};
+use rocket_okapi::JsonSchema;
 
 #[allow(non_camel_case_types)]
 #[derive(Identifiable, Queryable)]
@@ -9,6 +12,21 @@ pub struct User {
   pub username: String,
   pub email: String,
   pub password: String,
+}
+
+/// Struct for inserting new users.
+#[derive(Insertable, FromForm, Deserialize, JsonSchema, Clone)]
+#[table_name = "user"]
+pub struct NewUser {
+  pub username: String,
+  pub email: String,
+  pub password: String,
+}
+
+impl NewUser {
+  pub fn new(username: String, email: String, password: String) -> NewUser {
+    return NewUser { username, email, password };
+  }
 }
 
 #[allow(non_camel_case_types)]
@@ -23,7 +41,7 @@ pub struct Folder {
   pub name: String,
 }
 
-/// struct for inserting new folders
+/// Struct for inserting new folders.
 #[derive(Insertable)]
 #[table_name = "folder"]
 pub struct NewFolder {

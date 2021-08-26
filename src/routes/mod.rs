@@ -14,11 +14,30 @@ use rocket::fs::NamedFile;
 use serde::{Deserialize, Serialize};
 use schemars::JsonSchema;
 use rocket::serde::json::Json;
+use sha2::{self, Digest};
 
 #[openapi]
 #[get("/")]
 pub async fn index() -> &'static str {
   "Hello, world!"
+}
+
+#[openapi]
+#[post("/user", data = "<user>", format = "json")]
+pub async fn create_user(conn: DbConn, user: Json<NewUser>) -> Json<bool> {
+  if !db::users::is_user_unique(&conn, user.0.clone()).await { return Json(false); };
+
+  let mut hasher = sha2::Sha512::new();
+  hasher.update(user.0.password);
+  // {:x} means format as hexadecimal
+  let hashed_password = format!("{:X}", hasher.finalize());
+
+  let new_user = NewUser { username: user.0.username, email: user.0.email, password: hashed_password };
+  let result = db::users::insert_user(&conn, new_user.clone()).await;
+  if result == 0 { return Json(false) }
+
+  info!("A new user was created with name {}", new_user.username);
+  Json(true)
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Queryable)]
@@ -32,6 +51,7 @@ pub struct MediaResponse {
   pub uuid: String,
 }
 
+// FIXME: skips new media in /gallery/username/<medianame>; /gallery/username/<some_folder>/<medianame> works
 #[openapi]
 #[get("/media")]
 pub async fn media_structure(conn: DbConn) -> Json<Vec<MediaResponse>> {
@@ -45,15 +65,14 @@ pub async fn media_structure(conn: DbConn) -> Json<Vec<MediaResponse>> {
 // https://api.rocket.rs/master/rocket/struct.State.html
 #[openapi]
 #[get("/scan_media")]
-pub async fn scan_media(conn: DbConn) -> &'static str {
+pub async fn scan_media(claims: Claims, conn: DbConn) -> &'static str {
   let xdg_data = "gallery";
-  let user_id: i32 = 1;
 
   // let now_future = Delay::new(Duration::from_secs(10));
 
   // this thread will run until scanning is complete
   // thread::spawn(|conn, xdg_data, user_id| async {
-  scan::scan_root(&conn, xdg_data, user_id).await;
+  scan::scan_root(&conn, xdg_data, claims.user_id).await;
   // });
 
   "true"

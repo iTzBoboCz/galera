@@ -878,13 +878,13 @@ dependencies = [
  "proc-macro2",
  "r2d2",
  "rand",
- "ring",
  "rocket",
  "rocket_okapi",
  "rocket_sync_db_pools",
  "schemars",
  "serde",
  "serde_json",
+ "sha2",
  "uuid",
 ]
 

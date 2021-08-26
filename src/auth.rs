@@ -1,24 +1,38 @@
-use std::{fs::{self, File}, io::Read};
-use rand::{thread_rng, Rng, distributions::Alphanumeric};
+use std::fs::{self, File};
+use rand::{Rng, distributions::Alphanumeric, thread_rng};
 use chrono::Utc;
-use rocket::request::{self, FromRequest, Request, Outcome };
+use rocket::request::{ FromRequest, Request, Outcome };
 use serde::{Serialize, Deserialize};
-use jsonwebtoken::{Header, Algorithm, Validation, EncodingKey, DecodingKey};
+use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, TokenData, Validation};
 use uuid::Uuid;
+use rocket::http::Status;
+use crate::db::users;
+use crate::DbConn;
 
-/// Request guard that represents a user
+/// Request guard
+/// # Example
+/// Only authenticated users will be able to access data on this endpoint.
+/// ```
+/// #[get("/data")]
+/// pub async fn get_data(claims: Claims, conn: DbConn) -> Json<Vec<Data>> {
+///   Json(db::request_data(&conn).await)
+/// }
+/// ```
+/// for more information, see [Rocket documentation](https://rocket.rs/v0.5-rc/guide/requests/#request-guards).
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
-  // aud: String,         // Optional. Audience
-  exp: usize,          // Required (validate_exp defaults to true in validation). Expiration time (as UTC timestamp)
-  // iat: usize,          // Optional. Issued at (as UTC timestamp)
-  // iss: String,         // Optional. Issuer
-  // nbf: usize,          // Optional. Not Before (as UTC timestamp)
-  // sub: String,         // Optional. Subject (whom token refers to)
-  // refresh_token: i32,
+  /// expiration time
+  exp: i64,
+  /// issued at
+  iat: i64,
+  /// ID of a user
+  pub user_id: i32,
+  /// Refresh token
+  refresh_token: String,
 }
 
 impl Claims {
+  /// Checks whether the bearer token is expired or not.
   fn is_expired(&self) -> bool {
     let current_time = Utc::now().timestamp();
 
@@ -27,87 +41,89 @@ impl Claims {
 
     self.exp as i64 > (current_time + expiraton_time)
   }
-  fn get_exp(&self) -> usize {
-    self.exp
+
+  /// Checks the validity of a bearer token.
+  async fn is_valid(&self, conn: DbConn) -> bool {
+    // expiration
+    self.is_expired()
+    // valid user
+    && users::get_user_username(&conn, self.user_id.clone()).await.is_some()
+    // TODO: other checks
+    // valid refresh_token
+    // && db::users::(&conn, user_id,)
   }
 }
 
-// pub fn test() {
-//   let mut header = Header::new(Algorithm::HS512);
-
-//   let token = jsonwebtoken::encode(&header, &my_claims, &EncodingKey::from_secret("secret".as_ref()))?;
-
-
-//   let mut header = Header::new(Algorithm::HS512);
-//   header.kid = Some("blabla".to_owned());
-//   let token = jsonwebtoken::encode(&header, &my_claims, &EncodingKey::from_secret("secret".as_ref()))?;
-
-// }
-
-// TODO:
-// https://rocket.rs/v0.5-rc/guide/state/#within-guards
-// https://crates.io/crates/rocket_okapi_fork/versions
-// https://medium.com/@james_32022/authentication-in-rocket-feb4f7223254
-// https://github.com/magiclen/rocket-jwt-authorization/blob/master/src/lib.rs
-// https://curity.io/resources/learn/jwt-best-practices/
-// https://blog.logrocket.com/jwt-authentication-in-rust/
-// https://security.stackexchange.com/questions/119371/is-refreshing-an-expired-jwt-token-a-good-strategy
-// https://github.com/GREsau/okapi/pull/47/files#diff-e022d975abdfa9c7a10536c5107e3f660d3ea50534fd8f486fde8b14972b447f
-// https://github.com/SakaDream/rocket-rest-api-with-jwt/blob/master/src/jwt.rs
-// https://stackoverflow.com/questions/26340275/where-to-save-a-jwt-in-a-browser-based-application-and-how-to-use-it/40376819#40376819
-
-// SOLUTION: https://stackoverflow.com/a/42764942
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for Claims {
-    type Error = ();
+  type Error = ();
 
-    async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-      // error!("{:?}", request);
-      // fn is_valid() {
-      //   self.exp
-      //   // 1. expiration
-      //   // 2. check db if token is valid
-      // }
-      error!("{}", request);
-      let outcome = rocket::outcome::try_outcome!(request.guard::<Claims>().await);
+  /// Implements Request guard for Claims.
+  async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
+    let conn = request.guard::<DbConn>().await.unwrap();
 
-      if outcome.is_expired() {
-        Outcome::Forward(())
-      } else {
-        Outcome::Success(outcome)
-      }
+    let headers = request.headers();
+    if headers.is_empty() { return Outcome::Failure((Status::Unauthorized, ())); }
+    let authorization_header: Vec<&str> = headers.get("authorization")
+      .filter(|r| !r.is_empty())
+      .collect();
 
-      // error!("{:?}", outcome.get_exp());
+    if authorization_header.is_empty() { return Outcome::Failure((Status::Unauthorized, ())); }
+
+    let bearer_token_encoded: &str = authorization_header[0][6..authorization_header[0].len()].trim();
+    let bearer_token_decoded = decode_bearer_token(bearer_token_encoded);
+
+    if bearer_token_decoded.is_ok() {
+      let claims = bearer_token_decoded.unwrap().claims;
+
+      if claims.is_valid(conn).await { return Outcome::Success(claims) };
     }
-}
 
-impl Claims {
-  /// Generates new refresh token
-  fn generate_refresh_token() -> String {
-    return Uuid::new_v4().to_string();
+    error!("Bearer token is invalid.");
+    Outcome::Failure((Status::Unauthorized, ()))
   }
-
-
 }
 
-pub fn generate_token() -> String {
+/// Generates a new refresh token.
+fn generate_refresh_token() -> String {
+  return Uuid::new_v4().to_string();
+}
+
+/// Decodes a bearer token.
+fn decode_bearer_token(token: &str) -> Result<TokenData<Claims>, jsonwebtoken::errors::Error> {
+  jsonwebtoken::decode::<Claims>(token, &DecodingKey::from_secret(read_secret().unwrap().as_ref()), &Validation::new(Algorithm::HS512))
+}
+
+/// Generates a new bearer token.
+/// # Example
+/// This will generate a new bearer token for user with ID 1.
+/// ```
+/// let new_bearer_token = generate_token(1);
+/// ```
+pub fn generate_token(user_id: i32) -> String {
   let current_time = Utc::now().timestamp();
 
   // 15 mins in seconds
   let expiraton_time = 900;
 
   let claims = Claims {
-    exp: (current_time + expiraton_time) as usize,
+    exp: current_time + expiraton_time,
+    iat: current_time,
+    user_id,
+    refresh_token: generate_refresh_token()
   };
 
   let header = Header::new(Algorithm::HS512);
 
   let secret = read_secret();
 
+  // TODO: better error handling
+  if secret.is_none() { error!("Secret couldn't be read."); }
+
   jsonwebtoken::encode(&header, &claims, &EncodingKey::from_secret(secret.unwrap().as_bytes())).unwrap()
 }
 
-// https://stackoverflow.com/a/65478580
+/// Generates a new secret.
 pub fn generate_secret() -> String {
   let mut rng = thread_rng();
 
@@ -120,6 +136,8 @@ pub fn generate_secret() -> String {
   ).unwrap()
 }
 
+/// Reads content of a secret.key file.\
+/// If secret.key doesn't exist, it will be created.
 // TODO: check for write and read permissions
 pub fn read_secret() -> Option<String> {
   let path = "secret.key";
@@ -141,11 +159,3 @@ pub fn read_secret() -> Option<String> {
     Err(_) => None,
   }
 }
-
-// pub fn decode() -> String {
-
-// }
-
-// pub fn encode() -> String {
-
-// }

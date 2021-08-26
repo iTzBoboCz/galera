@@ -1,3 +1,4 @@
+use crate::models::NewUser;
 use crate::schema::user;
 use crate::DbConn;
 use diesel::ExpressionMethods;
@@ -5,13 +6,63 @@ use diesel::OptionalExtension;
 use diesel::QueryDsl;
 use diesel::RunQueryDsl;
 
+/// Inserts a new user.
+/// # Example
+/// ```
+/// let user = NewUser {
+///   username: String::from("foo"),
+///   email: String::from("foo@bar.foo"),
+///   password: String::from("bar")
+/// };
+/// insert_user(&conn, user);
+/// ```
+pub async fn insert_user(conn: &DbConn, user: NewUser) -> usize {
+  conn.run(move |c| {
+    let insert = diesel::insert_into(user::table)
+      .values(user.clone())
+      .execute(c)
+      .expect(format!("Error creating user {}", user.username).as_str());
+
+    return insert;
+  }).await
+}
+
+/// Checks whether user is unique in database.
+/// # Example
+/// This will add a new user only if it doesn't already exist.
+/// ```
+/// let user = NewUser {
+///   username: String::from("foo"),
+///   email: String::from("foo@bar.foo"),
+///   password: String::from("bar")
+/// };
+/// if is_user_unique(&conn, user) {
+///   insert_user(&conn, user);
+/// }
+/// ```
+pub async fn is_user_unique(conn: &DbConn, user: NewUser) -> bool {
+  conn.run(move |c| {
+    let user_id: Option<i32> = user::table
+      .select(user::id)
+      .filter(user::username.eq(user.username))
+      .or_filter(user::email.eq(user.email))
+      .first(c)
+      .optional()
+      .unwrap();
+
+    if user_id.is_some() { return false }
+
+    true
+  }).await
+}
+
 /// Gets user's ID from username.
 /// # Example
 /// We're selecting user with username michael.
 /// ```
-/// let user: Option<i32> = get_user_id(&conn, "michael");
+/// let user: Option<i32> = get_user_id(&conn, String::from("michael"));
 /// ```
-pub async fn get_user_id(conn: &DbConn, username: &'static str) -> Option<i32> {
+pub async fn get_user_id(conn: &DbConn, username: String) -> Option<i32> {
   conn.run(move |c| {
     let user_id: Option<i32> = user::table
       .select(user::id)
