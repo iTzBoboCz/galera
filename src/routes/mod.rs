@@ -40,6 +40,22 @@ pub async fn create_user(conn: DbConn, user: Json<NewUser>) -> Json<bool> {
   Json(true)
 }
 
+/// Struct for signing in.
+#[derive(FromForm, Deserialize, JsonSchema)]
+pub struct UserLogin {
+  pub username: Option<String>,
+  pub email: Option<String>,
+  pub password: String,
+}
+
+/// You must provide either a username or an email together with a password.
+#[openapi]
+#[post("/login", data = "<user_login>", format = "json")]
+pub async fn login(conn: DbConn, user_login: Json<UserLogin>) -> Json<bool> {
+  if user_login.email.is_none() && user_login.username.is_none() { return Json(false); }
+  Json(true)
+}
+
 #[derive(Serialize, Deserialize, JsonSchema, Queryable)]
 pub struct MediaResponse {
   pub filename: String,
