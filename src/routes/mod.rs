@@ -54,10 +54,10 @@ pub struct MediaResponse {
 // FIXME: skips new media in /gallery/username/<medianame>; /gallery/username/<some_folder>/<medianame> works
 #[openapi]
 #[get("/media")]
-pub async fn media_structure(conn: DbConn) -> Json<Vec<MediaResponse>> {
-  let user_id: i32 = 1;
+pub async fn media_structure(claims: Claims, conn: DbConn) -> Json<Vec<MediaResponse>> {
+  error!("user_id: {}", claims.user_id);
 
-  let structure = db::media::get_media_structure(&conn, user_id).await;
+  let structure = db::media::get_media_structure(&conn, claims.user_id).await;
 
   Json(structure)
 }
@@ -80,7 +80,7 @@ pub async fn scan_media(claims: Claims, conn: DbConn) -> &'static str {
 
 #[openapi]
 #[get("/media/<media_uuid>")]
-pub async fn get_media_by_uuid(conn: DbConn, media_uuid: String) -> Option<NamedFile> {
+pub async fn get_media_by_uuid(claims: Claims, conn: DbConn, media_uuid: String) -> Option<NamedFile> {
   let media_option: Option<models::Media> = conn.run(|c| {
     return crate::schema::media::table
       .select(crate::schema::media::table::all_columns())
@@ -95,7 +95,6 @@ pub async fn get_media_by_uuid(conn: DbConn, media_uuid: String) -> Option<Named
   let media = media_option.unwrap();
 
   let xdg_data = "gallery";
-  let user_id = 1;
 
   let mut folders: Vec<Folder> = vec!();
 
@@ -103,7 +102,7 @@ pub async fn get_media_by_uuid(conn: DbConn, media_uuid: String) -> Option<Named
   if current_folder.is_none() { return None; }
   folders.push(current_folder.clone().unwrap());
 
-  scan::select_parent_folder_recursive(&conn, current_folder.unwrap(), user_id, &mut folders);
+  scan::select_parent_folder_recursive(&conn, current_folder.unwrap(), claims.user_id, &mut folders);
 
   let relative_path = format!("{}/{}/", xdg_data, db::users::get_user_username(&conn, media.owner_id).await.unwrap());
 
