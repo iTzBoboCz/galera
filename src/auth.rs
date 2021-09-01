@@ -1,4 +1,8 @@
 use std::fs::{self, File};
+use okapi::openapi3::{
+  Object, Parameter, ParameterValue, Responses, SchemeIdentifier, SecurityRequirement,
+  SecurityScheme, SecuritySchemeData,
+};
 use rand::{Rng, distributions::Alphanumeric, thread_rng};
 use chrono::Utc;
 use rocket::{
@@ -11,6 +15,12 @@ use uuid::Uuid;
 use rocket::http::Status;
 use crate::db::users;
 use crate::DbConn;
+
+use rocket_okapi::{
+  gen::OpenApiGenerator,
+  request::{OpenApiFromRequest, RequestHeaderInput},
+  response::OpenApiResponder,
+};
 
 /// Request guard
 /// # Example
@@ -92,6 +102,76 @@ impl<'r> FromRequest<'r> for Claims {
 
     error!("Bearer token is invalid.");
     Outcome::Failure((Status::Unauthorized, ()))
+  }
+}
+
+impl<'a, 'r> OpenApiFromRequest<'a> for Claims {
+  fn request_input(
+    _gen: &mut OpenApiGenerator,
+    _name: String,
+  ) -> rocket_okapi::Result<RequestHeaderInput> {
+    let mut security_req = SecurityRequirement::new();
+    // each security requirement needs a specific key in the openapi docs
+    security_req.insert("example_security".into(), Vec::new());
+
+    // The scheme for the security needs to be defined as well
+    // https://swagger.io/docs/specification/authentication/basic-authentication/
+    let security_scheme = SecurityScheme {
+      description: Some("requires a bearer token to access".into()),
+      // this will show where and under which name the value will be found in the HTTP header
+      // in this case, the header key x-api-key will be searched
+      // other alternatives are "query", "cookie" according to the openapi specs.
+      // [link](https://swagger.io/specification/#security-scheme-object)
+      // which also is where you can find examples of how to create a JWT scheme for example
+      data: SecuritySchemeData::Http {
+        scheme: String::from("bearer"),
+        bearer_format: Some(String::from("JWT")),
+      },
+      extensions: Object::default(),
+    };
+
+    // scheme identifier is the keyvalue under which this security_scheme will be filed in
+    // the openapi.json file
+    let scheme_identifier = SchemeIdentifier {
+      scheme_identifier: "BearerAuth".into(),
+    };
+
+    Ok(RequestHeaderInput::Security((
+      security_scheme,
+      security_req,
+      scheme_identifier,
+    )))
+  }
+}
+
+impl<'a, 'r> OpenApiFromRequest<'a> for DbConn {
+  fn request_input(
+    _gen: &mut OpenApiGenerator,
+    _name: String,
+  ) -> rocket_okapi::Result<RequestHeaderInput> {
+    Ok(RequestHeaderInput::None)
+  }
+}
+
+/// Returns an empty, default `Response`. Always returns `Ok`.
+/// Defines the possible response for this request guard
+impl<'a, 'r: 'a> rocket::response::Responder<'a, 'r> for Claims {
+  fn respond_to(self, _: &rocket::request::Request<'_>) -> rocket::response::Result<'static> {
+    Ok(Response::new())
+  }
+}
+
+impl<'a, 'r: 'a> rocket::response::Responder<'a, 'r> for DbConn {
+  fn respond_to(self, _: &rocket::request::Request<'_>) -> rocket::response::Result<'static> {
+    Ok(Response::new())
+  }
+}
+
+/// Defines the possible responses for this request guard for the openapi docs (not used yet)
+impl<'a, 'r: 'a> OpenApiResponder<'a, 'r> for Claims {
+  fn responses(_: &mut OpenApiGenerator) -> rocket_okapi::Result<Responses> {
+    let responses = Responses::default();
+    Ok(responses)
   }
 }
 
