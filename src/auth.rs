@@ -1,7 +1,10 @@
 use std::fs::{self, File};
 use rand::{Rng, distributions::Alphanumeric, thread_rng};
 use chrono::Utc;
-use rocket::request::{ FromRequest, Request, Outcome };
+use rocket::{
+  Response,
+  request::{FromRequest, Request, Outcome},
+};
 use serde::{Serialize, Deserialize};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, TokenData, Validation};
 use uuid::Uuid;
@@ -63,12 +66,20 @@ impl<'r> FromRequest<'r> for Claims {
     let conn = request.guard::<DbConn>().await.unwrap();
 
     let headers = request.headers();
-    if headers.is_empty() { return Outcome::Failure((Status::Unauthorized, ())); }
-    let authorization_header: Vec<&str> = headers.get("authorization")
+    // error!("headers: {:?}", headers);
+    if headers.is_empty() {
+      error!("Headers are not valid.");
+      return Outcome::Failure((Status::Unauthorized, ()));
+    }
+    let authorization_header: Vec<&str> = headers
+      .get("authorization")
       .filter(|r| !r.is_empty())
       .collect();
 
-    if authorization_header.is_empty() { return Outcome::Failure((Status::Unauthorized, ())); }
+    if authorization_header.is_empty() {
+      error!("Authorization header is empty!");
+      return Outcome::Failure((Status::Unauthorized, ()));
+    }
 
     let bearer_token_encoded: &str = authorization_header[0][6..authorization_header[0].len()].trim();
     let bearer_token_decoded = decode_bearer_token(bearer_token_encoded);
@@ -110,7 +121,7 @@ pub fn generate_token(user_id: i32) -> String {
     exp: current_time + expiraton_time,
     iat: current_time,
     user_id,
-    refresh_token: generate_refresh_token()
+    refresh_token: generate_refresh_token(),
   };
 
   let header = Header::new(Algorithm::HS512);
@@ -130,10 +141,12 @@ pub fn generate_secret() -> String {
   let range = rng.gen_range(256..512);
 
   String::from_utf8(
-    rng.sample_iter(&Alphanumeric)
-    .take(range)
-    .collect::<Vec<_>>(),
-  ).unwrap()
+    rng
+      .sample_iter(&Alphanumeric)
+      .take(range)
+      .collect::<Vec<_>>(),
+  )
+  .unwrap()
 }
 
 /// Reads content of a secret.key file.\
