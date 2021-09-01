@@ -24,8 +24,8 @@ proc-macro2 = "1.0.27"
 futures = "0.3.16"
 # rocket_okapi = { version = "0.7.4", package = "rocket_okapi_fork" }
 # okapi = { version = "0.6.1", package = "okapi_fork" }
-rocket_okapi = "0.7.0-alpha-1"
-okapi = "0.6.0-alpha-1"
+rocket_okapi = { git = "https://github.com/TotalKrill/okapi", rev="fd79a67", package = "rocket_okapi_fork" }
+okapi = { git = "https://github.com/TotalKrill/okapi", rev="fd79a67", package = "okapi_fork" }
 uuid = { version = "0.8.2", features = ["v4"] }
 image = "0.23.14"
 schemars = { version = "0.8.3", features = ["chrono"] }
