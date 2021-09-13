@@ -828,7 +828,6 @@ dependencies = [
  "jsonwebtoken",
  "log",
  "okapi",
- "proc-macro2",
  "r2d2",
  "rand",
  "rocket",
