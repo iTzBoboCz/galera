@@ -44,7 +44,7 @@ fn rocket() -> _ {
     // routes_with_openapi![...] will host the openapi document at openapi.json
     .mount(
       "/",
-      routes_with_openapi![
+      openapi_get_routes![
         routes::index,
         routes::media_structure,
         routes::scan_media,

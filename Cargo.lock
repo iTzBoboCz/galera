@@ -827,12 +827,12 @@ dependencies = [
  "infer",
  "jsonwebtoken",
  "log",
- "okapi_fork",
+ "okapi",
  "proc-macro2",
  "r2d2",
  "rand",
  "rocket",
- "rocket_okapi_fork",
+ "rocket_okapi",
  "rocket_sync_db_pools",
  "schemars",
  "serde",
@@ -1407,10 +1407,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "okapi_fork"
-version = "0.6.1"
-source = "git+https://github.com/TotalKrill/okapi?rev=fd79a67#fd79a6740988688f38578a0192c43f3252553ae4"
+name = "okapi"
+version = "0.6.0-alpha-1"
+source = "git+https://github.com/GREsau/okapi?rev=aeb6be1#aeb6be16a7fd35266275f31c49771bfda7813a29"
 dependencies = [
+ "log",
  "schemars",
  "serde",
  "serde_json",
@@ -1861,28 +1862,30 @@ dependencies = [
 ]
 
 [[package]]
-name = "rocket_okapi_codegen_fork"
-version = "0.7.1"
-source = "git+https://github.com/TotalKrill/okapi?rev=fd79a67#fd79a6740988688f38578a0192c43f3252553ae4"
+name = "rocket_okapi"
+version = "0.8.0-alpha-1"
+source = "git+https://github.com/GREsau/okapi?rev=aeb6be1#aeb6be16a7fd35266275f31c49771bfda7813a29"
+dependencies = [
+ "either",
+ "log",
+ "okapi",
+ "rocket",
+ "rocket_okapi_codegen",
+ "schemars",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "rocket_okapi_codegen"
+version = "0.7.0-alpha-1"
+source = "git+https://github.com/GREsau/okapi?rev=aeb6be1#aeb6be16a7fd35266275f31c49771bfda7813a29"
 dependencies = [
  "darling",
  "proc-macro2",
  "quote",
  "rocket_http",
  "syn",
-]
-
-[[package]]
-name = "rocket_okapi_fork"
-version = "0.7.4"
-source = "git+https://github.com/TotalKrill/okapi?rev=fd79a67#fd79a6740988688f38578a0192c43f3252553ae4"
-dependencies = [
- "okapi_fork",
- "rocket",
- "rocket_okapi_codegen_fork",
- "schemars",
- "serde",
- "serde_json",
 ]
 
 [[package]]

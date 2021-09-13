@@ -1,6 +1,6 @@
 use std::fs::{self, File};
 use okapi::openapi3::{
-  Object, Parameter, ParameterValue, Responses, SchemeIdentifier, SecurityRequirement,
+  Object, Responses, SecurityRequirement,
   SecurityScheme, SecuritySchemeData,
 };
 use rand::{Rng, distributions::Alphanumeric, thread_rng};
@@ -106,13 +106,14 @@ impl<'r> FromRequest<'r> for Claims {
 }
 
 impl<'a, 'r> OpenApiFromRequest<'a> for Claims {
-  fn request_input(
+  fn from_request_input(
     _gen: &mut OpenApiGenerator,
     _name: String,
+    _required: bool,
   ) -> rocket_okapi::Result<RequestHeaderInput> {
     let mut security_req = SecurityRequirement::new();
     // each security requirement needs a specific key in the openapi docs
-    security_req.insert("example_security".into(), Vec::new());
+    security_req.insert("BearerAuth".into(), Vec::new());
 
     // The scheme for the security needs to be defined as well
     // https://swagger.io/docs/specification/authentication/basic-authentication/
@@ -130,24 +131,21 @@ impl<'a, 'r> OpenApiFromRequest<'a> for Claims {
       extensions: Object::default(),
     };
 
-    // scheme identifier is the keyvalue under which this security_scheme will be filed in
-    // the openapi.json file
-    let scheme_identifier = SchemeIdentifier {
-      scheme_identifier: "BearerAuth".into(),
-    };
-
-    Ok(RequestHeaderInput::Security((
+    Ok(RequestHeaderInput::Security(
+      // scheme identifier is the keyvalue under which this security_scheme will be filed in
+      // the openapi.json file
+      "BearerAuth".to_owned(),
       security_scheme,
       security_req,
-      scheme_identifier,
-    )))
+    ))
   }
 }
 
 impl<'a, 'r> OpenApiFromRequest<'a> for DbConn {
-  fn request_input(
+  fn from_request_input(
     _gen: &mut OpenApiGenerator,
     _name: String,
+    required: bool,
   ) -> rocket_okapi::Result<RequestHeaderInput> {
     Ok(RequestHeaderInput::None)
   }
