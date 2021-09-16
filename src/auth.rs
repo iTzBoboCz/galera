@@ -52,13 +52,13 @@ impl Claims {
     // 15 mins in seconds
     let expiraton_time = 900;
 
-    self.exp as i64 > (current_time + expiraton_time)
+    self.exp < (current_time + expiraton_time)
   }
 
   /// Checks the validity of a bearer token.
-  async fn is_valid(&self, conn: DbConn) -> bool {
+  pub async fn is_valid(&self, conn: DbConn) -> bool {
     // expiration
-    self.is_expired()
+    !self.is_expired()
     // valid user
     && users::get_user_username(&conn, self.user_id.clone()).await.is_some()
     // TODO: other checks
