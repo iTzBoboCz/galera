@@ -18,6 +18,7 @@ use rocket_sync_db_pools::database;
 use diesel_migrations::embed_migrations;
 use rocket::{Rocket, Build};
 use rocket::fairing::AdHoc;
+use crate::auth::Secret;
 
 // mod media;
 // mod errors;
@@ -36,7 +37,11 @@ fn rocket() -> _ {
   env_logger::init();
 
   dotenv::dotenv().ok();
-  // std::env::set_var("RUST_LOG", "actix_web=debug");
+
+  let secret_check = check_secret_startup();
+  if secret_check.is_err() {
+    panic!("Secret couldn't be read and/or created: {}", secret_check.unwrap_err())
+  }
 
   rocket::build()
     .attach(DbConn::fairing())
@@ -72,4 +77,21 @@ pub async fn run_migrations(rocket: Rocket<Build>) -> Rocket<Build> {
   conn.run(|c| embedded_migrations::run(c)).await.expect("can run migrations");
 
   rocket
+}
+
+/// Checks whether the secret.key file is present and tries to create it if it isn't.\
+/// This is meant to be run before starting Rocket.
+pub fn check_secret_startup() -> Result<(), std::io::Error> {
+  let read = Secret::read();
+  if read.is_err() {
+    Secret::new().write()?;
+
+    // It is also possible to have write-only access, so we must check reading too.
+    Secret::read()?;
+
+    warn!("Created missing secret.key file.");
+  }
+
+  info!("The secret.key file was successfully read.");
+  Ok(())
 }
