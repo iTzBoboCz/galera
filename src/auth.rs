@@ -21,6 +21,7 @@ use rocket_okapi::{
   request::{OpenApiFromRequest, RequestHeaderInput},
   response::OpenApiResponder,
 };
+use anyhow;
 
 /// Request guard
 /// # Example
@@ -179,8 +180,8 @@ fn generate_refresh_token() -> String {
 }
 
 /// Decodes a bearer token.
-fn decode_bearer_token(token: &str) -> Result<TokenData<Claims>, jsonwebtoken::errors::Error> {
-  jsonwebtoken::decode::<Claims>(token, &DecodingKey::from_secret(read_secret().unwrap().as_ref()), &Validation::new(Algorithm::HS512))
+fn decode_bearer_token(token: &str) -> anyhow::Result<TokenData<Claims>> {
+  Ok(jsonwebtoken::decode::<Claims>(token, &DecodingKey::from_secret(Secret::read()?.as_ref()), &Validation::new(Algorithm::HS512))?)
 }
 
 /// Generates a new bearer token.
@@ -204,49 +205,67 @@ pub fn generate_token(user_id: i32) -> String {
 
   let header = Header::new(Algorithm::HS512);
 
-  let secret = read_secret();
+  let secret = Secret::read();
 
   // TODO: better error handling
-  if secret.is_none() { error!("Secret couldn't be read."); }
+  if secret.is_err() { error!("Secret couldn't be read."); }
 
   jsonwebtoken::encode(&header, &claims, &EncodingKey::from_secret(secret.unwrap().as_bytes())).unwrap()
 }
 
-/// Generates a new secret.
-pub fn generate_secret() -> String {
-  let mut rng = thread_rng();
-
-  let range = rng.gen_range(256..512);
-
-  String::from_utf8(
-    rng
-      .sample_iter(&Alphanumeric)
-      .take(range)
-      .collect::<Vec<_>>(),
-  )
-  .unwrap()
+pub struct Secret {
+  key: String,
 }
 
-/// Reads content of a secret.key file.\
-/// If secret.key doesn't exist, it will be created.
-// TODO: check for write and read permissions
-pub fn read_secret() -> Option<String> {
-  let path = "secret.key";
-  let file = File::open(path);
+impl Secret {
+  /// Generates a new secret.
+  /// # Example
+  /// ```
+  /// let my_secret_string = Secret::generate();
+  /// ```
+  fn generate() -> String {
+    let mut rng = thread_rng();
 
-  // generate new secret if the file doesn't exist
-  if file.is_err() {
-    let secret = generate_secret();
+    let range = rng.gen_range(256..512);
 
-    let result = fs::write(path, secret);
-
-    if result.is_err() {
-      return None;
-    }
+    String::from_utf8(
+      rng
+        .sample_iter(&Alphanumeric)
+        .take(range)
+        .collect::<Vec<_>>(),
+    )
+    .unwrap()
   }
 
-  match fs::read_to_string(path) {
-    Ok(result) => Some(result),
-    Err(_) => None,
+  /// Reads content of a secret.key file.
+  // TODO: check for write and read permissions
+  pub fn read() -> Result<String, std::io::Error> {
+    let path = "secret.key";
+    fs::read_to_string(path)
+  }
+
+  /// Writes a secret to the secret.key file.
+  /// # Example
+  /// ```
+  /// // creates a new secret
+  /// let my_secret = Secret::new();
+  ///
+  /// // writes it to the disk
+  /// my_secret.write();
+  /// ```
+  pub fn write(self) -> std::io::Result<()> {
+    let path = "secret.key";
+    fs::write(path, self.key)
+  }
+
+  /// Creates a new secret
+  /// # Example
+  /// ```
+  /// let my_secret = Secret::new();
+  /// ```
+  pub fn new() -> Secret {
+    Secret {
+      key: Secret::generate()
+    }
   }
 }
