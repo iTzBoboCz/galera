@@ -71,6 +71,51 @@ impl Claims {
     // valid refresh_token
     // && db::users::(&conn, user_id,)
   }
+
+  /// Encodes a bearer token.
+  /// # Example
+  /// ```
+  /// let token = Claims::new(1).encode();
+  /// ```
+  pub fn encode(self) -> anyhow::Result<ClaimsEncoded> {
+    let header = Header::new(Algorithm::HS512);
+    let secret = Secret::read()?;
+
+    let encoded_claims = jsonwebtoken::encode(&header, &self, &EncodingKey::from_secret(secret.as_bytes()));
+
+    // TODO: better error messages
+    if encoded_claims.is_err() {
+        let err =  encoded_claims.unwrap_err();
+        let context = format!("Encoding went wrong. {}.", err);
+        return Err(anyhow::Error::new( err).context(context));
+    }
+    Ok(ClaimsEncoded { encoded_claims: encoded_claims.unwrap() })
+  }
+
+  /// Generates a new bearer token.
+  /// # Example
+  /// This will generate a new bearer token for user with ID 1.
+  /// ```
+  /// let new_bearer_token = Claims::new(1);
+  /// ```
+  pub fn new(user_id: i32) -> Claims {
+    let current_time = Utc::now().timestamp();
+
+    // 15 mins in seconds
+    let expiraton_time = 900;
+
+    Claims {
+      exp: current_time + expiraton_time,
+      iat: current_time,
+      user_id,
+      refresh_token: Claims::generate_refresh_token(),
+    }
+  }
+
+  /// Generates a new refresh token.
+  fn generate_refresh_token() -> String {
+    return Uuid::new_v4().to_string();
+  }
 }
 
 #[rocket::async_trait]
@@ -179,43 +224,9 @@ impl<'a, 'r: 'a> OpenApiResponder<'a, 'r> for Claims {
   }
 }
 
-/// Generates a new refresh token.
-fn generate_refresh_token() -> String {
-  return Uuid::new_v4().to_string();
-}
-
 /// Decodes a bearer token.
 fn decode_bearer_token(token: &str) -> anyhow::Result<TokenData<Claims>> {
   Ok(jsonwebtoken::decode::<Claims>(token, &DecodingKey::from_secret(Secret::read()?.as_ref()), &Validation::new(Algorithm::HS512))?)
-}
-
-/// Generates a new bearer token.
-/// # Example
-/// This will generate a new bearer token for user with ID 1.
-/// ```
-/// let new_bearer_token = generate_token(1);
-/// ```
-pub fn generate_token(user_id: i32) -> String {
-  let current_time = Utc::now().timestamp();
-
-  // 15 mins in seconds
-  let expiraton_time = 900;
-
-  let claims = Claims {
-    exp: current_time + expiraton_time,
-    iat: current_time,
-    user_id,
-    refresh_token: generate_refresh_token(),
-  };
-
-  let header = Header::new(Algorithm::HS512);
-
-  let secret = Secret::read();
-
-  // TODO: better error handling
-  if secret.is_err() { error!("Secret couldn't be read."); }
-
-  jsonwebtoken::encode(&header, &claims, &EncodingKey::from_secret(secret.unwrap().as_bytes())).unwrap()
 }
 
 pub struct Secret {
