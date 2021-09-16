@@ -45,6 +45,11 @@ pub struct Claims {
   refresh_token: String,
 }
 
+/// Encoded bearer token
+pub struct ClaimsEncoded {
+  encoded_claims: String,
+}
+
 impl Claims {
   /// Checks whether the bearer token is expired or not.
   fn is_expired(&self) -> bool {
