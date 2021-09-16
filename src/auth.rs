@@ -1,4 +1,4 @@
-use std::fs::{self, File};
+use std::{convert::TryFrom, fs};
 use okapi::openapi3::{
   Object, Responses, SecurityRequirement,
   SecurityScheme, SecuritySchemeData,
@@ -21,9 +21,10 @@ use rocket_okapi::{
   request::{OpenApiFromRequest, RequestHeaderInput},
   response::OpenApiResponder,
 };
-use anyhow;
+use anyhow::{self, Context};
 
-/// Request guard
+/// Bearer token\
+/// used as a Request guard
 /// # Example
 /// Only authenticated users will be able to access data on this endpoint.
 /// ```
@@ -46,8 +47,52 @@ pub struct Claims {
 }
 
 /// Encoded bearer token
+/// # Example
+/// decode an encoded bearer token
+/// ```
+/// let encoded_token = Claims::new(1).encode().unwrap();
+///
+/// let decoded_token = encoded_token.decode();
+/// ```
 pub struct ClaimsEncoded {
   encoded_claims: String,
+}
+
+impl ClaimsEncoded {
+  /// Decodes a bearer token.
+  pub fn decode(self) -> anyhow::Result<TokenData<Claims>> {
+    let secret = Secret::read().context("Secret couldn't be read.")?;
+
+    let decoded = jsonwebtoken::decode::<Claims>(self.encoded_claims.as_str(), &DecodingKey::from_secret(secret.as_ref()), &Validation::new(Algorithm::HS512));
+
+    // TODO: better error messages
+    if decoded.is_err() {
+        let err =  decoded.unwrap_err();
+        let context = format!("Decoding went wrong. {}.", err);
+        return Err(anyhow::Error::new( err).context(context));
+    }
+    Ok(decoded.unwrap())
+  }
+}
+
+impl TryFrom<&str> for Claims {
+  type Error = anyhow::Error;
+
+  /// Tries to convert encoded bearer token presented as a string to a Claims struct.\
+  /// Will return error if token can't be decoded.
+  /// # Example
+  /// ```
+  /// let my_bearer_string = "<encoded_bearer>";
+  ///
+  /// let result = Claims::try_from(my_bearer_string)?;
+  /// ```
+  fn try_from(token: &str) -> anyhow::Result<Claims> {
+    let encoded = ClaimsEncoded {
+      encoded_claims: token.to_owned(),
+    };
+
+    Ok(encoded.decode()?.claims)
+  }
 }
 
 impl Claims {
@@ -143,16 +188,19 @@ impl<'r> FromRequest<'r> for Claims {
     }
 
     let bearer_token_encoded: &str = authorization_header[0][6..authorization_header[0].len()].trim();
-    let bearer_token_decoded = decode_bearer_token(bearer_token_encoded);
+    let bearer_token_decoded = Claims::try_from(bearer_token_encoded);
 
     if bearer_token_decoded.is_ok() {
-      let claims = bearer_token_decoded.unwrap().claims;
+      let claims = bearer_token_decoded.unwrap();
 
       if claims.is_valid(conn).await { return Outcome::Success(claims) };
+
+      error!("Bearer token is invalid.");
+      return Outcome::Failure((Status::Unauthorized, ()));
     }
 
-    error!("Bearer token is invalid.");
-    Outcome::Failure((Status::Unauthorized, ()))
+    error!("{}", bearer_token_decoded.unwrap_err());
+    Outcome::Failure((Status::InternalServerError, ()))
   }
 }
 
@@ -222,11 +270,6 @@ impl<'a, 'r: 'a> OpenApiResponder<'a, 'r> for Claims {
     let responses = Responses::default();
     Ok(responses)
   }
-}
-
-/// Decodes a bearer token.
-fn decode_bearer_token(token: &str) -> anyhow::Result<TokenData<Claims>> {
-  Ok(jsonwebtoken::decode::<Claims>(token, &DecodingKey::from_secret(Secret::read()?.as_ref()), &Validation::new(Algorithm::HS512))?)
 }
 
 pub struct Secret {
