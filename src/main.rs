@@ -19,6 +19,7 @@ use diesel_migrations::embed_migrations;
 use rocket::{Rocket, Build};
 use rocket::fairing::AdHoc;
 use crate::auth::Secret;
+use crate::directories::Directories;
 
 // mod media;
 // mod errors;
@@ -28,6 +29,7 @@ mod models;
 mod scan;
 mod schema;
 mod auth;
+mod directories;
 
 #[database("galera")]
 pub struct DbConn(diesel::MysqlConnection);
@@ -37,6 +39,9 @@ fn rocket() -> _ {
   env_logger::init();
 
   dotenv::dotenv().ok();
+
+  let dir = Directories::new();
+  if dir.is_none() { panic!("Directories check failed."); }
 
   let secret_check = check_secret_startup();
   if secret_check.is_err() {
