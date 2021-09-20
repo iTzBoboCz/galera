@@ -3,6 +3,8 @@ use chrono::NaiveDateTime;
 use rocket::form::FromForm;
 use serde::{Serialize, Deserialize};
 use rocket_okapi::JsonSchema;
+use chrono::Utc;
+use nanoid::nanoid;
 
 #[allow(non_camel_case_types)]
 #[derive(Identifiable, Queryable)]
@@ -57,14 +59,39 @@ impl NewFolder {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Identifiable, Queryable, Associations)]
+#[derive(Identifiable, Queryable, Associations, Serialize, JsonSchema)]
 #[table_name = "album"]
 #[belongs_to(User, foreign_key = "owner_id")]
 pub struct Album {
   pub id: i32,
   pub owner_id: i32,
-  pub link: Option<String>,
+  pub name: String,
+  pub description: Option<String>,
+  pub created_at: NaiveDateTime,
+  pub link: String,
   pub password: Option<String>,
+}
+
+/// Struct for inserting new albums.
+#[derive(Insertable, Deserialize, Clone, JsonSchema)]
+#[table_name = "album"]
+pub struct NewAlbum {
+  pub owner_id: i32,
+  pub name: String,
+  pub description: Option<String>,
+  pub created_at: NaiveDateTime,
+  pub link: String,
+  pub password: Option<String>,
+}
+
+impl NewAlbum {
+  pub fn new(owner_id: i32, name: String, description: Option<String>, link: String, password: Option<String>) -> NewAlbum {
+    let timestamp = Utc::now().timestamp();
+    let created_at = NaiveDateTime::from_timestamp(timestamp, 0);
+    let link = nanoid!();
+
+    NewAlbum { owner_id, name, description, created_at, link, password }
+  }
 }
 
 #[allow(non_camel_case_types)]

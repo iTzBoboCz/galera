@@ -4,6 +4,7 @@ use crate::models::{self, *};
 use crate::scan;
 use crate::schema::media;
 use crate::DbConn;
+use chrono::NaiveDateTime;
 use diesel::ExpressionMethods;
 use diesel::OptionalExtension;
 use diesel::QueryDsl;
@@ -76,6 +77,72 @@ pub async fn media_structure(claims: Claims, conn: DbConn) -> Json<Vec<MediaResp
   let structure = db::media::get_media_structure(&conn, claims.user_id).await;
 
   Json(structure)
+}
+
+#[derive(Serialize, Deserialize, JsonSchema, Queryable)]
+pub struct AlbumInsertData {
+  pub name: String,
+  pub description: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema, Queryable)]
+pub struct AlbumResponse {
+  pub owner_id: i32,
+  pub name: String,
+  pub description: Option<String>,
+  pub created_at: NaiveDateTime,
+  pub link: String,
+}
+
+impl From<Album> for AlbumResponse {
+  fn from(album: Album) -> Self {
+    AlbumResponse { owner_id: album.owner_id, name: album.name, description: album.description, created_at: album.created_at, link: album.link }
+  }
+}
+
+impl From<&Album> for AlbumResponse {
+  fn from(album: &Album) -> Self {
+    AlbumResponse { owner_id: album.owner_id, name: album.name.clone(), description: album.description.clone(), created_at: album.created_at, link: album.link.clone() }
+  }
+}
+
+impl From<NewAlbum> for AlbumResponse {
+  fn from(album: NewAlbum) -> Self {
+    AlbumResponse { owner_id: album.owner_id, name: album.name, description: album.description, created_at: album.created_at, link: album.link }
+  }
+}
+
+/// Creates a new album
+#[openapi]
+#[post("/album", data = "<album_insert_data>", format = "json")]
+pub async fn create_album(claims: Claims, conn: DbConn, album_insert_data: Json<AlbumInsertData>) -> Json<Option<AlbumResponse>> {
+  db::albums::insert_album(&conn, claims.user_id, album_insert_data.into_inner()).await;
+
+  let last_insert_id = db::general::get_last_insert_id(&conn).await;
+
+  if last_insert_id.is_none() {
+    error!("Last insert id was not returned. This may happen if restarting MySQL during scanning.");
+    return Json(None);
+  }
+
+  // TODO: impl from u jiné struktury bez ID a hesla
+  let album = db::albums::select_album(&conn, last_insert_id.unwrap()).await;
+  if album.is_none() { return Json(None); }
+
+  Json(Some(AlbumResponse::from(album.unwrap())))
+}
+
+/// Retrieves a list of albums of an authenticated user
+#[openapi]
+#[get("/album")]
+pub async fn get_album_list(claims: Claims, conn: DbConn) -> Json<Vec<AlbumResponse>> {
+  let albums = db::albums::get_album_list(&conn, claims.user_id).await;
+
+  let result = albums.iter()
+    .map(|r| AlbumResponse::from(r))
+    .collect::<Vec<AlbumResponse>>();
+
+  Json(result)
 }
 
 // https://api.rocket.rs/master/rocket/struct.State.html

@@ -60,6 +60,8 @@ fn rocket() -> _ {
         routes::scan_media,
         routes::get_media_by_uuid,
         routes::create_user,
+        routes::get_album_list,
+        routes::create_album,
         routes::login,
         routes::test
       ],

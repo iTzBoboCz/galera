@@ -2,7 +2,10 @@ table! {
   album (id) {
     id -> Integer,
     owner_id -> Integer,
-    link -> Nullable<Varchar>,
+    name -> Varchar,
+    description -> Nullable<Varchar>,
+    created_at -> Timestamp,
+    link -> Varchar,
     password -> Nullable<Varchar>,
   }
 }
