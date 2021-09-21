@@ -34,7 +34,7 @@ pub async fn insert_media(conn: &DbConn, name: String, parent_folder: Folder, us
   conn.run(move |c| {
     // error!("file {} doesnt exist", name.display().to_string());
     let uuid = Uuid::new_v4().to_string();
-    let new_media = NewMedia::new(name.clone(), parent_folder.id, user_id, None, image_dimensions.0, image_dimensions.1, NaiveDateTime::from_timestamp(10, 10), uuid, hash_file(&media_scanned, SHA2512));
+    let new_media = NewMedia::new(name.clone(), parent_folder.id, user_id, image_dimensions.0, image_dimensions.1, NaiveDateTime::from_timestamp(10, 10), uuid, hash_file(&media_scanned, SHA2512));
     let insert = diesel::insert_into(media::table)
       .values(new_media)
       .execute(c)
@@ -57,7 +57,7 @@ pub async fn get_media_structure(conn: &DbConn, user_id: i32) -> Vec<crate::rout
 
   for response in structure {
     vec.push(
-      crate::routes::MediaResponse { filename: response.filename, owner_id: response.owner_id, album_id: response.album_id, width: response.width, height: response.height, date_taken: response.date_taken, uuid: response.uuid }
+      crate::routes::MediaResponse { filename: response.filename, owner_id: response.owner_id, width: response.width, height: response.height, date_taken: response.date_taken, uuid: response.uuid }
     )
   }
 

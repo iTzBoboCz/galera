@@ -5,6 +5,7 @@ table! {
     name -> Varchar,
     description -> Nullable<Varchar>,
     created_at -> Timestamp,
+    thumbnail_link -> Nullable<Varchar>,
     link -> Varchar,
     password -> Nullable<Varchar>,
   }
@@ -17,6 +18,14 @@ table! {
     invited_user_id -> Integer,
     accepted -> Bool,
     write_access -> Bool,
+  }
+}
+
+table! {
+  album_media (id) {
+    id -> Integer,
+    album_id -> Integer,
+    media_id -> Integer,
   }
 }
 
@@ -43,7 +52,6 @@ table! {
     filename -> Varchar,
     folder_id -> Integer,
     owner_id -> Integer,
-    album_id -> Nullable<Integer>,
     width -> Unsigned<Integer>,
     height -> Unsigned<Integer>,
     date_taken -> Timestamp,
@@ -64,16 +72,18 @@ table! {
 joinable!(album -> user (owner_id));
 joinable!(album_invite -> album (album_id));
 joinable!(album_invite -> user (invited_user_id));
+joinable!(album_media -> album (album_id));
+joinable!(album_media -> media (media_id));
 joinable!(favorite_media -> media (media_id));
 joinable!(favorite_media -> user (user_id));
 joinable!(folder -> user (owner_id));
-joinable!(media -> album (album_id));
 joinable!(media -> folder (folder_id));
 joinable!(media -> user (owner_id));
 
 allow_tables_to_appear_in_same_query!(
   album,
   album_invite,
+  album_media,
   favorite_media,
   folder,
   media,

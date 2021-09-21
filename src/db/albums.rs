@@ -1,6 +1,6 @@
 use crate::models::{self, *};
 use crate::routes::AlbumInsertData;
-use crate::schema::album;
+use crate::schema::{album, album_media};
 use crate::DbConn;
 use diesel::ExpressionMethods;
 use diesel::OptionalExtension;
@@ -42,4 +42,18 @@ pub async fn get_album_list(conn: &DbConn, user_id: i32) -> Vec<Album> {
       .unwrap()
       .unwrap()
   }).await
+}
+
+pub async fn album_add_media(conn: &DbConn, album_id: i32, list_of_media: Vec<NewAlbumMedia>) -> Option<()> {
+  let r: Result<usize, diesel::result::Error> = conn.run(move |c| {
+    diesel::insert_into(album_media::table)
+      .values(list_of_media)
+      .execute(c)
+  }).await;
+
+  if r.is_err() {
+    return None;
+  }
+
+  Some(())
 }

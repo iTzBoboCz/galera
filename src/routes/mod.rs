@@ -11,7 +11,7 @@ use diesel::QueryDsl;
 use diesel::RunQueryDsl;
 use diesel::Table;
 use futures::executor;
-use rocket::fs::NamedFile;
+use rocket::{fs::NamedFile, http::Status, response::status};
 use serde::{Deserialize, Serialize};
 use schemars::JsonSchema;
 use rocket::serde::json::Json;
@@ -61,7 +61,6 @@ pub async fn login(conn: DbConn, user_login: Json<UserLogin>) -> Json<bool> {
 pub struct MediaResponse {
   pub filename: String,
   pub owner_id: i32,
-  pub album_id: Option<i32>,
   pub width: u32,
   pub height: u32,
   pub date_taken: chrono::NaiveDateTime,
@@ -91,24 +90,25 @@ pub struct AlbumResponse {
   pub name: String,
   pub description: Option<String>,
   pub created_at: NaiveDateTime,
-  pub link: String,
+  pub thumbnail_link: Option<String>,
+  pub link: String
 }
 
 impl From<Album> for AlbumResponse {
   fn from(album: Album) -> Self {
-    AlbumResponse { owner_id: album.owner_id, name: album.name, description: album.description, created_at: album.created_at, link: album.link }
+    AlbumResponse { owner_id: album.owner_id, name: album.name, description: album.description, created_at: album.created_at, thumbnail_link: album.thumbnail_link, link: album.link }
   }
 }
 
 impl From<&Album> for AlbumResponse {
   fn from(album: &Album) -> Self {
-    AlbumResponse { owner_id: album.owner_id, name: album.name.clone(), description: album.description.clone(), created_at: album.created_at, link: album.link.clone() }
+    AlbumResponse { owner_id: album.owner_id, name: album.name.clone(), description: album.description.clone(), created_at: album.created_at, thumbnail_link: album.thumbnail_link.clone(), link: album.link.clone() }
   }
 }
 
 impl From<NewAlbum> for AlbumResponse {
   fn from(album: NewAlbum) -> Self {
-    AlbumResponse { owner_id: album.owner_id, name: album.name, description: album.description, created_at: album.created_at, link: album.link }
+    AlbumResponse { owner_id: album.owner_id, name: album.name, description: album.description, created_at: album.created_at, thumbnail_link: None, link: album.link }
   }
 }
 
@@ -130,6 +130,17 @@ pub async fn create_album(claims: Claims, conn: DbConn, album_insert_data: Json<
   if album.is_none() { return Json(None); }
 
   Json(Some(AlbumResponse::from(album.unwrap())))
+}
+
+#[openapi]
+#[post("/album/media", data = "<list_of_media>", format = "json")]
+pub async fn album_add_media(claims: Claims, conn: DbConn, list_of_media: Json<Vec<NewAlbumMedia>>) -> Result<(), Status> {
+  let r = db::albums::album_add_media(&conn, claims.user_id, list_of_media.into_inner()).await;
+  if r.is_none() {
+    return Err(Status::InternalServerError);
+  }
+
+  Ok(())
 }
 
 /// Retrieves a list of albums of an authenticated user
@@ -164,18 +175,14 @@ pub async fn scan_media(claims: Claims, conn: DbConn) -> &'static str {
 #[openapi]
 #[get("/media/<media_uuid>")]
 pub async fn get_media_by_uuid(claims: Claims, conn: DbConn, media_uuid: String) -> Option<NamedFile> {
-  let media_option: Option<models::Media> = conn.run(|c| {
+  let media: models::Media = conn.run(|c| {
     return crate::schema::media::table
       .select(crate::schema::media::table::all_columns())
       .filter(media::dsl::uuid.eq(media_uuid))
       .first::<Media>(c)
       .optional()
       .unwrap();
-  }).await;
-
-  if media_option.is_none() { return None; }
-
-  let media = media_option.unwrap();
+  }).await?;
 
   let xdg_data = "gallery";
 

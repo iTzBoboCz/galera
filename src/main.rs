@@ -62,6 +62,7 @@ fn rocket() -> _ {
         routes::create_user,
         routes::get_album_list,
         routes::create_album,
+        routes::album_add_media,
         routes::login,
         routes::test
       ],

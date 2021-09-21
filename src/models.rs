@@ -1,4 +1,4 @@
-use super::schema::{album, album_invite, folder, media, user};
+use super::schema::{album, album_media, album_invite, folder, media, user};
 use chrono::NaiveDateTime;
 use rocket::form::FromForm;
 use serde::{Serialize, Deserialize};
@@ -68,6 +68,7 @@ pub struct Album {
   pub name: String,
   pub description: Option<String>,
   pub created_at: NaiveDateTime,
+  pub thumbnail_link: Option<String>,
   pub link: String,
   pub password: Option<String>,
 }
@@ -107,6 +108,24 @@ pub struct Album_invite {
   pub write_access: bool,
 }
 
+#[allow(non_camel_case_types)]
+#[derive(Identifiable, Queryable, Associations)]
+#[table_name = "album_media"]
+#[belongs_to(Album, foreign_key = "album_id")]
+#[belongs_to(Media, foreign_key = "media_id")]
+pub struct AlbumMedia {
+  pub id: i32,
+  pub album_id: i32,
+  pub media_id: i32
+}
+
+#[derive(Insertable, Deserialize, JsonSchema)]
+#[table_name = "album_media"]
+pub struct NewAlbumMedia {
+  pub album_id: i32,
+  pub media_id: i32
+}
+
 //#[table_name = "posts"]
 #[allow(non_camel_case_types)]
 #[derive(Identifiable, Queryable, Associations)]
@@ -118,7 +137,6 @@ pub struct Media {
   pub filename: String,
   pub folder_id: i32,
   pub owner_id: i32,
-  pub album_id: Option<i32>,
   pub width: u32,
   pub height: u32,
   pub date_taken: NaiveDateTime,
@@ -133,7 +151,6 @@ pub struct NewMedia {
   pub filename: String,
   pub folder_id: i32,
   pub owner_id: i32,
-  pub album_id: Option<i32>,
   pub width: u32,
   pub height: u32,
   pub date_taken: NaiveDateTime,
@@ -142,12 +159,11 @@ pub struct NewMedia {
 }
 
 impl NewMedia {
-  pub fn new(filename: String, folder_id: i32, owner_id: i32, album_id: Option<i32>, width: u32, height: u32, date_taken: NaiveDateTime, uuid: String, sha2_512: String) -> NewMedia {
+  pub fn new(filename: String, folder_id: i32, owner_id: i32, width: u32, height: u32, date_taken: NaiveDateTime, uuid: String, sha2_512: String) -> NewMedia {
     return NewMedia {
       filename,
       folder_id,
       owner_id,
-      album_id,
       width,
       height,
       date_taken,
