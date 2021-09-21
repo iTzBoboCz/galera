@@ -7,7 +7,6 @@ use diesel::OptionalExtension;
 use diesel::QueryDsl;
 use diesel::RunQueryDsl;
 use diesel::Table;
-use nanoid::nanoid;
 
 pub async fn select_album(conn: &DbConn, album_id: i32) -> Option<Album> {
   conn.run(move |c| {
@@ -21,7 +20,7 @@ pub async fn select_album(conn: &DbConn, album_id: i32) -> Option<Album> {
 }
 
 pub async fn insert_album(conn: &DbConn, user_id: i32, album_insert_data: AlbumInsertData) {
-  let new_album = NewAlbum::new(user_id, album_insert_data.name, album_insert_data.description, nanoid!(), None);
+  let new_album = NewAlbum::new(user_id, album_insert_data.name, album_insert_data.description, None);
   conn.run(move |c| {
     let insert = diesel::insert_into(album::table)
       .values(new_album.clone())

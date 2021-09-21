@@ -86,7 +86,7 @@ pub struct NewAlbum {
 }
 
 impl NewAlbum {
-  pub fn new(owner_id: i32, name: String, description: Option<String>, link: String, password: Option<String>) -> NewAlbum {
+  pub fn new(owner_id: i32, name: String, description: Option<String>, password: Option<String>) -> NewAlbum {
     let timestamp = Utc::now().timestamp();
     let created_at = NaiveDateTime::from_timestamp(timestamp, 0);
     let link = nanoid!();
