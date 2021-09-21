@@ -11,7 +11,7 @@ use diesel::QueryDsl;
 use diesel::RunQueryDsl;
 use diesel::Table;
 use futures::executor;
-use rocket::{fs::NamedFile, http::Status, response::status};
+use rocket::{fs::NamedFile, http::Status};
 use serde::{Deserialize, Serialize};
 use schemars::JsonSchema;
 use rocket::serde::json::Json;
@@ -135,7 +135,7 @@ pub async fn create_album(claims: Claims, conn: DbConn, album_insert_data: Json<
 #[openapi]
 #[post("/album/media", data = "<list_of_media>", format = "json")]
 pub async fn album_add_media(claims: Claims, conn: DbConn, list_of_media: Json<Vec<NewAlbumMedia>>) -> Result<(), Status> {
-  let r = db::albums::album_add_media(&conn, claims.user_id, list_of_media.into_inner()).await;
+  let r = db::albums::album_add_media(&conn, list_of_media.into_inner()).await;
   if r.is_none() {
     return Err(Status::InternalServerError);
   }
