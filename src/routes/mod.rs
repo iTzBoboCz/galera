@@ -125,6 +125,9 @@ pub async fn create_album(claims: Claims, conn: DbConn, album_insert_data: Json<
     return Json(None);
   }
 
+  let accessible = db::albums::user_has_album_access(&conn, claims.user_id, last_insert_id.unwrap()).await;
+  if accessible.is_err() || !accessible.unwrap() { return Json(None); }
+
   // TODO: impl from u jiné struktury bez ID a hesla
   let album = db::albums::select_album(&conn, last_insert_id.unwrap()).await;
   if album.is_none() { return Json(None); }

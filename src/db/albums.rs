@@ -2,11 +2,29 @@ use crate::models::{self, *};
 use crate::routes::AlbumInsertData;
 use crate::schema::{album, album_media};
 use crate::DbConn;
+use diesel::BoolExpressionMethods;
 use diesel::ExpressionMethods;
 use diesel::OptionalExtension;
 use diesel::QueryDsl;
 use diesel::RunQueryDsl;
 use diesel::Table;
+
+// Checks whether the user has access to the album.
+pub async fn user_has_album_access(conn: &DbConn, user_id: i32, album_id: i32) -> Result<bool, diesel::result::Error> {
+  let id: Option<i32> = conn.run(move |c| {
+    album::table
+      .select(album::dsl::id)
+      .filter(album::dsl::id.eq(album_id).and(album::dsl::owner_id.eq(user_id)))
+      .first::<i32>(c)
+      .optional()
+  }).await?;
+
+  if id.is_none() {
+    return Ok(false);
+  }
+
+  Ok(true)
+}
 
 pub async fn select_album(conn: &DbConn, album_id: i32) -> Option<Album> {
   conn.run(move |c| {
