@@ -138,6 +138,7 @@ pub async fn create_album(claims: Claims, conn: DbConn, album_insert_data: Json<
 #[openapi]
 #[post("/album/media", data = "<list_of_media>", format = "json")]
 pub async fn album_add_media(claims: Claims, conn: DbConn, list_of_media: Json<Vec<NewAlbumMedia>>) -> Result<(), Status> {
+  // TODO: check media and album access
   let r = db::albums::album_add_media(&conn, list_of_media.into_inner()).await;
   if r.is_none() {
     return Err(Status::InternalServerError);
@@ -157,6 +158,59 @@ pub async fn get_album_list(claims: Claims, conn: DbConn) -> Json<Vec<AlbumRespo
     .collect::<Vec<AlbumResponse>>();
 
   Json(result)
+}
+
+#[derive(Serialize, Deserialize, JsonSchema, Queryable)]
+pub struct AlbumUpdateData {
+  pub name: Option<String>,
+  pub description: Option<String>,
+}
+
+/// Updates already existing album
+#[openapi]
+#[put("/album/<album_id>", data = "<album_update_data>", format = "json")]
+pub async fn update_album(claims: Claims, conn: DbConn, album_id: i32, album_update_data: Json<AlbumUpdateData>) -> Result<Status, Status> {
+  if album_update_data.name.is_none() && album_update_data.description.is_none() {
+    return Err(Status::UnprocessableEntity);
+  }
+
+  let accessible = db::albums::user_has_album_access(&conn, claims.user_id, album_id).await;
+  if accessible.is_err() { return Err(Status::InternalServerError) }
+
+  if !accessible.unwrap() {
+    return Err(Status::Forbidden);
+  }
+
+  let changed_rows = db::albums::update_album(&conn, album_id, album_update_data.into_inner()).await;
+  error!("changed: {:?}", changed_rows);
+  if changed_rows.is_none() { return Err(Status::InternalServerError) }
+
+  if changed_rows.unwrap() == 0 {
+    return Ok(Status::NoContent);
+  }
+
+  Ok(Status::Ok)
+}
+
+/// Creates a new album
+#[openapi]
+#[delete("/album/<album_id>")]
+pub async fn delete_album(claims: Claims, conn: DbConn, album_id: i32) -> Result<Status, Status> {
+  let album = db::albums::select_album(&conn, album_id).await;
+
+  if album.is_none() { return Err(Status::NotFound); }
+
+  let accessible = db::albums::user_has_album_access(&conn, claims.user_id, album_id).await;
+  if accessible.is_err() { return Err(Status::InternalServerError) }
+
+  if !accessible.unwrap() {
+    return Err(Status::Forbidden);
+  }
+
+  let deleted = db::albums::delete_album(&conn, album_id).await;
+  if deleted.is_err() { return Err(Status::ImATeapot) }
+
+  Ok(Status::Ok)
 }
 
 // https://api.rocket.rs/master/rocket/struct.State.html

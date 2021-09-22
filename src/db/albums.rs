@@ -1,5 +1,5 @@
 use crate::models::{self, *};
-use crate::routes::AlbumInsertData;
+use crate::routes::{AlbumInsertData, AlbumUpdateData};
 use crate::schema::{album, album_media};
 use crate::DbConn;
 use diesel::BoolExpressionMethods;
@@ -73,4 +73,41 @@ pub async fn album_add_media(conn: &DbConn, list_of_media: Vec<NewAlbumMedia>) -
   }
 
   Some(())
+}
+
+pub async fn update_album(conn: &DbConn, album_id: i32, album_update_data: AlbumUpdateData) -> Option<usize> {
+  let mut name_result: Result<usize, diesel::result::Error> = Ok(0);
+  let mut description_result: Result<usize, diesel::result::Error> = Ok(0);
+
+  let name = album_update_data.name;
+  let description = album_update_data.description;
+
+  if name.is_some() {
+    name_result = conn.run(move |c| {
+      diesel::update(album::table.filter(album::id.eq(album_id)))
+        .set(album::dsl::name.eq(name.unwrap()))
+        .execute(c)
+    }).await;
+  }
+
+  if description.is_some() {
+    description_result = conn.run(move |c| {
+      diesel::update(album::table.filter(album::id.eq(album_id)))
+        .set(album::dsl::description.eq(description.unwrap()))
+        .execute(c)
+    }).await;
+  }
+
+  if name_result.is_err() || description_result.is_err() {
+    return None;
+  }
+
+  Some(name_result.unwrap() + description_result.unwrap())
+}
+
+pub async fn delete_album(conn: &DbConn, album_id: i32) -> Result<usize, diesel::result::Error> {
+  conn.run(move |c| {
+    diesel::delete(album::table.filter(album::id.eq(album_id)))
+      .execute(c)
+  }).await
 }
