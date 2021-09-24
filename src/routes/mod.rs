@@ -67,6 +67,18 @@ pub struct MediaResponse {
   pub uuid: String,
 }
 
+impl From<Media> for MediaResponse {
+  fn from(media: Media) -> Self {
+    MediaResponse { filename: media.filename, owner_id: media.owner_id, width: media.width, height: media.height, date_taken: media.date_taken, uuid: media.uuid }
+  }
+}
+
+impl From<&Media> for MediaResponse {
+  fn from(media: &Media) -> Self {
+    MediaResponse { filename: media.filename.clone(), owner_id: media.owner_id, width: media.width, height: media.height, date_taken: media.date_taken, uuid: media.uuid.clone() }
+  }
+}
+
 // FIXME: skips new media in /gallery/username/<medianame>; /gallery/username/<some_folder>/<medianame> works
 #[openapi]
 #[get("/media")]
@@ -277,6 +289,69 @@ pub async fn get_media_by_uuid(claims: Claims, conn: DbConn, media_uuid: String)
   path += &media.filename;
 
   NamedFile::open(path).await.ok()
+}
+
+/// Returns a list of liked media.
+#[openapi]
+#[get("/media/liked")]
+pub async fn get_media_liked_list(claims: Claims, conn: DbConn) -> Result<Json<Vec<MediaResponse>>, Status> {
+  let liked = db::media::get_liked_media(&conn, claims.user_id).await;
+
+  if liked.is_err() {
+    return Err(Status::InternalServerError)
+  }
+
+  let result = liked.unwrap().iter()
+    .map(|r| MediaResponse::from(r))
+    .collect::<Vec<MediaResponse>>();
+
+  Ok(Json(result))
+}
+
+/// Likes the media.
+#[openapi]
+#[post("/media/<media_uuid>/like")]
+pub async fn media_like(claims: Claims, conn: DbConn, media_uuid: String) -> Result<Status, Status> {
+  let media_id_option = db::media::select_media_id(&conn, media_uuid).await;
+  if media_id_option.is_none() {
+    return Err(Status::NotFound);
+  }
+
+  let media_id = media_id_option.unwrap();
+
+  // It would be better to return result and have different responses for each error kind.
+  // But it looks like that Diesel uses one error kind for multiple different errors and changes only the message.
+  let changed_rows = db::media::media_like(&conn, media_id, claims.user_id).await;
+  if changed_rows.is_ok() {
+    return Ok(Status::Ok);
+  }
+
+  error!("Inserting like failed: {}", changed_rows.unwrap_err());
+  return Err(Status::Conflict);
+}
+
+/// Unlikes the media.
+#[openapi]
+#[delete("/media/<media_uuid>/like")]
+pub async fn media_unlike(claims: Claims, conn: DbConn, media_uuid: String) -> Result<Status, Status> {
+  let media_id_option = db::media::select_media_id(&conn, media_uuid).await;
+  if media_id_option.is_none() {
+    return Err(Status::NotFound);
+  }
+
+  let media_id = media_id_option.unwrap();
+
+  let r = db::media::media_unlike(&conn, media_id, claims.user_id).await;
+
+  if r.is_err() { return Ok(Status::InternalServerError) }
+
+  let changed_rows = r.unwrap();
+
+  if changed_rows == 0 {
+    return Ok(Status::NoContent);
+  }
+
+  Ok(Status::Ok)
 }
 
 #[openapi]

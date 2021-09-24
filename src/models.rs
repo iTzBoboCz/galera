@@ -1,4 +1,4 @@
-use super::schema::{album, album_media, album_invite, folder, media, user};
+use super::schema::{album, album_media, album_invite, folder, media, favorite_media, user};
 use chrono::NaiveDateTime;
 use rocket::form::FromForm;
 use serde::{Serialize, Deserialize};
@@ -169,6 +169,34 @@ impl NewMedia {
       date_taken,
       uuid,
       sha2_512,
+    };
+  }
+}
+
+#[allow(non_camel_case_types)]
+#[derive(Identifiable, Queryable, Associations)]
+#[table_name = "favorite_media"]
+#[belongs_to(Media, foreign_key = "media_id")]
+#[belongs_to(User, foreign_key = "user_id")]
+pub struct FavoriteMedia {
+  pub id: i32,
+  pub media_id: i32,
+  pub user_id: i32,
+}
+
+/// struct for inserting likes.
+#[derive(Insertable)]
+#[table_name = "favorite_media"]
+pub struct NewFavoriteMedia {
+  pub media_id: i32,
+  pub user_id: i32,
+}
+
+impl NewFavoriteMedia {
+  pub fn new(media_id: i32,  user_id: i32) -> NewFavoriteMedia {
+  return NewFavoriteMedia {
+      media_id,
+      user_id,
     };
   }
 }

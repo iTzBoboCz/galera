@@ -66,6 +66,9 @@ fn rocket() -> _ {
         routes::delete_album,
         routes::album_add_media,
         routes::login,
+        routes::get_media_liked_list,
+        routes::media_like,
+        routes::media_unlike,
         routes::test
       ],
     )

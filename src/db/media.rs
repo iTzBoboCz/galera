@@ -1,5 +1,5 @@
 use crate::models::*;
-use crate::schema::media;
+use crate::schema::{favorite_media, media};
 use crate::DbConn;
 use checksums::{hash_file, Algorithm::SHA2512};
 use chrono::NaiveDateTime;
@@ -62,4 +62,47 @@ pub async fn get_media_structure(conn: &DbConn, user_id: i32) -> Vec<crate::rout
   }
 
   return vec;
+}
+
+pub async fn select_media_id(conn: &DbConn, media_uuid: String) -> Option<i32> {
+  conn.run(move |c| {
+    media::table
+      .select(media::id)
+      .filter(media::dsl::uuid.eq(media_uuid))
+      .first::<i32>(c)
+      .optional()
+      .unwrap()
+  }).await
+}
+
+pub async fn media_like(conn: &DbConn, media_id: i32, user_id: i32) -> Result<usize, diesel::result::Error> {
+  let new_like = NewFavoriteMedia::new(media_id, user_id);
+  conn.run(move |c| {
+    diesel::insert_into(favorite_media::table)
+      .values(new_like)
+      .execute(c)
+  }).await
+}
+
+pub async fn media_unlike(conn: &DbConn, media_id: i32, user_id: i32) -> Result<usize, diesel::result::Error> {
+  conn.run(move |c| {
+    diesel::delete(
+      favorite_media::table
+        .filter(favorite_media::media_id.eq(media_id).and(favorite_media::user_id.eq(user_id)))
+    )
+      .execute(c)
+  }).await
+}
+
+pub async fn get_liked_media(conn: &DbConn, user_id: i32) -> Result<Vec<Media>, diesel::result::Error> {
+  conn.run(move |c| {
+    media::table
+      .select(media::table::all_columns())
+      .filter(media::id.eq_any(
+        favorite_media::table
+          .select(favorite_media::media_id)
+          .filter(favorite_media::user_id.eq(user_id))
+      ))
+      .get_results::<Media>(c)
+  }).await
 }
