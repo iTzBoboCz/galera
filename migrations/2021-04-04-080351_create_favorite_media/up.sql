@@ -3,5 +3,6 @@ CREATE TABLE `favorite_media` (
   `media_id` INT NOT NULL,
   `user_id` INT NOT NULL,
   CONSTRAINT `favorite_media_fk0` FOREIGN KEY (`media_id`) REFERENCES `media`(`id`),
-  CONSTRAINT `favorite_media_fk1` FOREIGN KEY (`user_id`) REFERENCES `user`(`id`)
+  CONSTRAINT `favorite_media_fk1` FOREIGN KEY (`user_id`) REFERENCES `user`(`id`),
+  CONSTRAINT `favorite_media_un0` UNIQUE (`media_id`, `user_id`)
 );
