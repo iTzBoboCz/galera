@@ -37,6 +37,17 @@ pub async fn select_album(conn: &DbConn, album_id: i32) -> Option<Album> {
   }).await
 }
 
+pub async fn select_album_id(conn: &DbConn, album_uuid: String) -> Option<i32> {
+  conn.run(move |c| {
+    album::table
+      .select(album::id)
+      .filter(album::dsl::link.eq(album_uuid))
+      .first::<i32>(c)
+      .optional()
+      .unwrap()
+  }).await
+}
+
 pub async fn insert_album(conn: &DbConn, user_id: i32, album_insert_data: AlbumInsertData) {
   let new_album = NewAlbum::new(user_id, album_insert_data.name, album_insert_data.description, None);
   conn.run(move |c| {

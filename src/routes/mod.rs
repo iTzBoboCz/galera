@@ -168,11 +168,18 @@ pub struct AlbumUpdateData {
 
 /// Updates already existing album
 #[openapi]
-#[put("/album/<album_id>", data = "<album_update_data>", format = "json")]
-pub async fn update_album(claims: Claims, conn: DbConn, album_id: i32, album_update_data: Json<AlbumUpdateData>) -> Result<Status, Status> {
+#[put("/album/<album_uuid>", data = "<album_update_data>", format = "json")]
+pub async fn update_album(claims: Claims, conn: DbConn, album_uuid: String, album_update_data: Json<AlbumUpdateData>) -> Result<Status, Status> {
   if album_update_data.name.is_none() && album_update_data.description.is_none() {
     return Err(Status::UnprocessableEntity);
   }
+
+  let album_id_option = db::albums::select_album_id(&conn, album_uuid).await;
+  if album_id_option.is_none() {
+    return Err(Status::NotFound);
+  }
+
+  let album_id = album_id_option.unwrap();
 
   let accessible = db::albums::user_has_album_access(&conn, claims.user_id, album_id).await;
   if accessible.is_err() { return Err(Status::InternalServerError) }
@@ -194,8 +201,15 @@ pub async fn update_album(claims: Claims, conn: DbConn, album_id: i32, album_upd
 
 /// Creates a new album
 #[openapi]
-#[delete("/album/<album_id>")]
-pub async fn delete_album(claims: Claims, conn: DbConn, album_id: i32) -> Result<Status, Status> {
+#[delete("/album/<album_uuid>")]
+pub async fn delete_album(claims: Claims, conn: DbConn, album_uuid: String) -> Result<Status, Status> {
+  let album_id_option = db::albums::select_album_id(&conn, album_uuid).await;
+  if album_id_option.is_none() {
+    return Err(Status::NotFound);
+  }
+
+  let album_id = album_id_option.unwrap();
+
   let album = db::albums::select_album(&conn, album_id).await;
 
   if album.is_none() { return Err(Status::NotFound); }
