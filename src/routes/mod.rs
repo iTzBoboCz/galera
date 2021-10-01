@@ -178,6 +178,34 @@ pub struct AlbumUpdateData {
   pub description: Option<String>,
 }
 
+#[openapi]
+#[get("/album/<album_uuid>/media")]
+pub async fn get_album_structure(claims: Claims, conn: DbConn, album_uuid: String) -> Result<Json<Vec<MediaResponse>>, Status> {
+  let album_id_option = db::albums::select_album_id(&conn, album_uuid).await;
+  if album_id_option.is_none() {
+    return Err(Status::NotFound);
+  }
+
+  let album_id = album_id_option.unwrap();
+
+  let accessible = db::albums::user_has_album_access(&conn, claims.user_id, album_id).await;
+  if accessible.is_err() { return Err(Status::InternalServerError) }
+
+  if !accessible.unwrap() {
+    return Err(Status::Forbidden);
+  }
+
+  let structure = db::albums::get_album_media(&conn, album_id).await;
+
+  if structure.is_err() { return Err(Status::InternalServerError) }
+
+  let result = structure.unwrap().iter()
+    .map(|r| MediaResponse::from(r))
+    .collect::<Vec<MediaResponse>>();
+
+  Ok(Json(result))
+}
+
 /// Updates already existing album
 #[openapi]
 #[put("/album/<album_uuid>", data = "<album_update_data>", format = "json")]

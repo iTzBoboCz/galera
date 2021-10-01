@@ -67,6 +67,7 @@ fn rocket() -> _ {
         routes::album_add_media,
         routes::login,
         routes::get_media_liked_list,
+        routes::get_album_structure,
         routes::media_like,
         routes::media_unlike,
         routes::test

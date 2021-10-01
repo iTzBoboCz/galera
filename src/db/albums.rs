@@ -1,6 +1,6 @@
 use crate::models::{self, *};
 use crate::routes::{AlbumInsertData, AlbumUpdateData};
-use crate::schema::{album, album_media};
+use crate::schema::{album, album_media, media};
 use crate::DbConn;
 use diesel::BoolExpressionMethods;
 use diesel::ExpressionMethods;
@@ -120,5 +120,18 @@ pub async fn delete_album(conn: &DbConn, album_id: i32) -> Result<usize, diesel:
   conn.run(move |c| {
     diesel::delete(album::table.filter(album::id.eq(album_id)))
       .execute(c)
+  }).await
+}
+
+pub async fn get_album_media(conn: &DbConn, album_id: i32) -> Result<Vec<Media>, diesel::result::Error> {
+  conn.run(move |c| {
+    media::table
+      .select(media::table::all_columns())
+      .filter(media::id.eq_any(
+        album_media::table
+          .select(album_media::media_id)
+          .filter(album_media::id.eq(album_id))
+      ))
+      .get_results::<Media>(c)
   }).await
 }
