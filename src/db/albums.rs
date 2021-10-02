@@ -130,7 +130,7 @@ pub async fn get_album_media(conn: &DbConn, album_id: i32) -> Result<Vec<Media>,
       .filter(media::id.eq_any(
         album_media::table
           .select(album_media::media_id)
-          .filter(album_media::id.eq(album_id))
+          .filter(album_media::album_id.eq(album_id))
       ))
       .get_results::<Media>(c)
   }).await
