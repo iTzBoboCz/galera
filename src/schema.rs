@@ -30,6 +30,24 @@ table! {
 }
 
 table! {
+  auth_access_token (id) {
+    id -> Integer,
+    refresh_token_id -> Integer,
+    access_token -> Varchar,
+    expiration_time -> Timestamp,
+  }
+}
+
+table! {
+  auth_refresh_token (id) {
+    id -> Integer,
+    user_id -> Integer,
+    refresh_token -> Varchar,
+    expiration_time -> Timestamp,
+  }
+}
+
+table! {
   favorite_media (id) {
     id -> Integer,
     media_id -> Integer,
@@ -74,6 +92,8 @@ joinable!(album_invite -> album (album_id));
 joinable!(album_invite -> user (invited_user_id));
 joinable!(album_media -> album (album_id));
 joinable!(album_media -> media (media_id));
+joinable!(auth_access_token -> auth_refresh_token (refresh_token_id));
+joinable!(auth_refresh_token -> user (user_id));
 joinable!(favorite_media -> media (media_id));
 joinable!(favorite_media -> user (user_id));
 joinable!(folder -> user (owner_id));
@@ -84,6 +104,8 @@ allow_tables_to_appear_in_same_query!(
   album,
   album_invite,
   album_media,
+  auth_access_token,
+  auth_refresh_token,
   favorite_media,
   folder,
   media,

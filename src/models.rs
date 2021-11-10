@@ -1,9 +1,8 @@
-use super::schema::{album, album_media, album_invite, folder, media, favorite_media, user};
-use chrono::NaiveDateTime;
+use super::schema::{album, album_media, album_invite, auth_access_token, auth_refresh_token, folder, media, favorite_media, user};
+use chrono::{Duration, NaiveDateTime, Utc};
 use rocket::form::FromForm;
 use serde::{Serialize, Deserialize};
 use rocket_okapi::JsonSchema;
-use chrono::Utc;
 use nanoid::nanoid;
 
 #[allow(non_camel_case_types)]
@@ -198,5 +197,65 @@ impl NewFavoriteMedia {
       media_id,
       user_id,
     };
+  }
+}
+
+#[allow(non_camel_case_types)]
+#[derive(Identifiable, Queryable, Associations)]
+#[table_name = "auth_refresh_token"]
+#[belongs_to(User, foreign_key = "user_id")]
+pub struct AuthRefreshToken {
+  pub id: i32,
+  pub user_id: i32,
+  pub refresh_token: String,
+  pub expiration_time: NaiveDateTime,
+}
+
+/// struct for inserting refresh tokens.
+#[derive(Insertable)]
+#[table_name = "auth_refresh_token"]
+pub struct NewAuthRefreshToken {
+  pub user_id: i32,
+  pub refresh_token: String,
+  pub expiration_time: NaiveDateTime,
+}
+
+impl NewAuthRefreshToken {
+  pub fn new(user_id: i32, refresh_token: String) -> NewAuthRefreshToken {
+    NewAuthRefreshToken {
+      user_id,
+      refresh_token,
+      expiration_time: Utc::now().naive_utc() + Duration::hours(1)
+    }
+  }
+}
+
+#[allow(non_camel_case_types)]
+#[derive(Identifiable, Queryable, Associations)]
+#[table_name = "auth_access_token"]
+#[belongs_to(AuthRefreshToken, foreign_key = "refresh_token_id")]
+pub struct AuthAccessToken {
+  pub id: i32,
+  pub refresh_token_id: i32,
+  pub access_token: String,
+  pub expiration_time: NaiveDateTime,
+}
+
+/// struct for inserting access tokens.
+#[derive(Insertable)]
+#[table_name = "auth_access_token"]
+pub struct NewAuthAccessToken {
+  pub refresh_token_id: i32,
+  pub access_token: String,
+  pub expiration_time: NaiveDateTime,
+}
+
+impl NewAuthAccessToken {
+  pub fn new(refresh_token_id: i32, access_token: String) -> NewAuthAccessToken {
+    NewAuthAccessToken {
+      refresh_token_id,
+      access_token,
+      expiration_time: Utc::now().naive_utc() + Duration::minutes(15)
+    }
   }
 }
