@@ -14,6 +14,14 @@ impl Directories {
     ProjectDirs::from("org", "galera", "galera")
   }
 
+  pub fn data(&self) -> &PathBuf {
+    &self.data
+  }
+
+  pub fn config(&self) -> &PathBuf {
+    &self.config
+  }
+
   pub fn new() -> Option<Directories> {
     let dirs_option = Directories::get_dirs();
     if dirs_option.is_none() {
