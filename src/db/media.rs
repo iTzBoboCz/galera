@@ -44,6 +44,7 @@ pub async fn insert_media(conn: &DbConn, name: String, parent_folder: Folder, us
   }).await;
 }
 
+/// Returns a skeleton media list.
 pub async fn get_media_structure(conn: &DbConn, user_id: i32) -> Vec<crate::routes::MediaResponse> {
   let structure: Vec<Media> = conn.run(move |c| {
     return media::table
@@ -64,6 +65,7 @@ pub async fn get_media_structure(conn: &DbConn, user_id: i32) -> Vec<crate::rout
   return vec;
 }
 
+/// Tries to select a media ID from its UUID.
 pub async fn select_media_id(conn: &DbConn, media_uuid: String) -> Option<i32> {
   conn.run(move |c| {
     media::table
@@ -75,6 +77,7 @@ pub async fn select_media_id(conn: &DbConn, media_uuid: String) -> Option<i32> {
   }).await
 }
 
+/// Likes the media.
 pub async fn media_like(conn: &DbConn, media_id: i32, user_id: i32) -> Result<usize, diesel::result::Error> {
   let new_like = NewFavoriteMedia::new(media_id, user_id);
   conn.run(move |c| {
@@ -84,6 +87,7 @@ pub async fn media_like(conn: &DbConn, media_id: i32, user_id: i32) -> Result<us
   }).await
 }
 
+/// Unlikes the media.
 pub async fn media_unlike(conn: &DbConn, media_id: i32, user_id: i32) -> Result<usize, diesel::result::Error> {
   conn.run(move |c| {
     diesel::delete(
@@ -94,6 +98,7 @@ pub async fn media_unlike(conn: &DbConn, media_id: i32, user_id: i32) -> Result<
   }).await
 }
 
+/// Gets a list of liked media.
 pub async fn get_liked_media(conn: &DbConn, user_id: i32) -> Result<Vec<Media>, diesel::result::Error> {
   conn.run(move |c| {
     media::table
