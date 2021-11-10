@@ -100,10 +100,7 @@ impl Claims {
   fn is_expired(&self) -> bool {
     let current_time = Utc::now().timestamp();
 
-    // 15 mins in seconds
-    let expiraton_time = 900;
-
-    self.exp < (current_time + expiraton_time)
+    self.exp < current_time
   }
 
   /// Checks the validity of a bearer token.
