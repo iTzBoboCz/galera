@@ -18,7 +18,7 @@ use rocket_sync_db_pools::database;
 use diesel_migrations::embed_migrations;
 use rocket::{Rocket, Build};
 use rocket::fairing::AdHoc;
-use crate::auth::Secret;
+use crate::auth::secret::Secret;
 use crate::directories::Directories;
 
 // mod media;
