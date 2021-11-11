@@ -22,7 +22,7 @@ log = "0.4.14"
 env_logger = "0.8.3"
 
 # Openapi
-rocket_okapi = { version = "0.8.0-rc.1", features = ["swagger"] }
+rocket_okapi = { version = "0.8.0-rc.1", default-features = false, features = ["swagger"] }
 okapi = { version = "0.7.0-rc.1" }
 
 # Validation
