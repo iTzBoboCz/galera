@@ -12,7 +12,7 @@ license = "GPL-3.0-only"
 rocket = { version = "0.5.0-rc.1", default-features = false, features = ["json"] }
 
 # Database
-diesel = { version = "1.4.5", features = ["mysql", "r2d2", "chrono"] }
+diesel = { version = "1.4.8", features = ["mysql", "r2d2", "chrono"] }
 diesel_migrations = "1.4.0"
 rocket_sync_db_pools = { version = "0.1.0-rc.1", features = ["diesel_mysql_pool"] }
 r2d2 = "0.8.9"
