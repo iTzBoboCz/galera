@@ -1,10 +1,13 @@
 use crate::models::NewUser;
+use crate::models::User;
 use crate::schema::user;
 use crate::DbConn;
+use diesel::BoolExpressionMethods;
 use diesel::ExpressionMethods;
 use diesel::OptionalExtension;
 use diesel::QueryDsl;
 use diesel::RunQueryDsl;
+use diesel::Table;
 
 /// Inserts a new user.
 /// # Example
@@ -75,11 +78,11 @@ pub async fn get_user_id(conn: &DbConn, username: String) -> Option<i32> {
   }).await
 }
 
-/// gets user's ID from username
+/// Tries to select a user by its ID.
 /// # Example
-/// We're selecting user with ID 1.
+/// We're selecting the username of a user with ID 1.
 /// ```
-/// let user: Option<String> = get_user_username(&conn, 1);
+/// let username: Option<String> = get_user_username(&conn, 1);
 /// ```
 pub async fn get_user_username(conn: &DbConn, user_id: i32) -> Option<String> {
   conn.run(move |c| {
@@ -91,5 +94,53 @@ pub async fn get_user_username(conn: &DbConn, user_id: i32) -> Option<String> {
       .unwrap();
 
     return username;
+  }).await
+}
+
+/// Tries to select a user by its ID.
+pub async fn get_user_by_id(conn: &DbConn, user_id: i32) -> Option<User> {
+  conn.run(move |c| {
+    user::table
+      .select(user::table::all_columns())
+      .filter(user::id.eq(user_id))
+      .first::<User>(c)
+      .optional()
+      .unwrap()
+  }).await
+}
+
+/// Tries to select a user_id from a given email.
+pub async fn get_user_id_email(conn: &DbConn, email: String) -> Option<i32> {
+  conn.run(move |c| {
+    user::table
+      .select(user::id)
+      .filter(user::email.eq(email))
+      .first(c)
+      .optional()
+      .unwrap()
+  }).await
+}
+
+/// Checks the database for a combination of a specified username and password.
+pub async fn check_user_login_username(conn: &DbConn, username: String, password: String) -> Option<i32> {
+  conn.run(move |c| {
+    user::table
+      .select(user::id)
+      .filter(user::username.eq(username).and(user::password.eq(password)))
+      .first(c)
+      .optional()
+      .unwrap()
+  }).await
+}
+
+/// Checks the database for a combination of a specified email and password.
+pub async fn check_user_login_email(conn: &DbConn, email: String, password: String) -> Option<i32> {
+  conn.run(move |c| {
+    user::table
+      .select(user::id)
+      .filter(user::email.eq(email).and(user::password.eq(password)))
+      .first(c)
+      .optional()
+      .unwrap()
   }).await
 }

@@ -1,5 +1,7 @@
-use crate::auth::token::Claims;
+use crate::auth::login::{UserLogin, UserInfo, LoginResponse};
+use crate::auth::token::{Claims, ClaimsEncoded};
 use crate::db;
+use crate::db::users::get_user_by_id;
 use crate::models::{self, *};
 use crate::scan;
 use crate::schema::media;
@@ -15,7 +17,6 @@ use rocket::{fs::NamedFile, http::Status};
 use serde::{Deserialize, Serialize};
 use schemars::JsonSchema;
 use rocket::serde::json::Json;
-use sha2::{self, Digest};
 
 #[openapi]
 #[get("/")]
@@ -25,36 +26,63 @@ pub async fn index() -> &'static str {
 
 #[openapi]
 #[post("/user", data = "<user>", format = "json")]
-pub async fn create_user(conn: DbConn, user: Json<NewUser>) -> Json<bool> {
-  if !db::users::is_user_unique(&conn, user.0.clone()).await { return Json(false); };
+pub async fn create_user(conn: DbConn, user: Json<NewUser>) -> Result<Status, Status> {
+  if !user.check() { return Err(Status::UnprocessableEntity) }
 
-  let mut hasher = sha2::Sha512::new();
-  hasher.update(user.0.password);
-  // {:x} means format as hexadecimal
-  let hashed_password = format!("{:X}", hasher.finalize());
+  if !db::users::is_user_unique(&conn, user.0.clone()).await { return Err(Status::Conflict); };
 
-  let new_user = NewUser { username: user.0.username, email: user.0.email, password: hashed_password };
+  let new_user = user.into_inner().hash_password();
   let result = db::users::insert_user(&conn, new_user.clone()).await;
-  if result == 0 { return Json(false) }
+  if result == 0 { return Err(Status::InternalServerError) }
 
   info!("A new user was created with name {}", new_user.username);
-  Json(true)
-}
-
-/// Struct for signing in.
-#[derive(FromForm, Deserialize, JsonSchema)]
-pub struct UserLogin {
-  pub username: Option<String>,
-  pub email: Option<String>,
-  pub password: String,
+  Ok(Status::Ok)
 }
 
 /// You must provide either a username or an email together with a password.
 #[openapi]
 #[post("/login", data = "<user_login>", format = "json")]
-pub async fn login(conn: DbConn, user_login: Json<UserLogin>) -> Json<bool> {
-  if user_login.email.is_none() && user_login.username.is_none() { return Json(false); }
-  Json(true)
+pub async fn login(conn: DbConn, user_login: Json<UserLogin>) -> Result<Json<LoginResponse>, Status> {
+  let token_option = user_login.into_inner().hash_password().login(&conn).await;
+  if token_option.is_none() { return Err(Status::Conflict); }
+
+  let token = token_option.unwrap();
+
+  let user_info = get_user_by_id(&conn, token.user_id).await;
+  if user_info.is_none() { return Err(Status::InternalServerError) }
+
+  let encoded = token.encode();
+  if encoded.is_err() { return Err(Status::InternalServerError) }
+
+  Ok(
+    Json(
+      LoginResponse::new(
+        encoded.unwrap(),
+        UserInfo::from(user_info.unwrap())
+      )
+    )
+  )
+}
+
+#[openapi]
+#[post("/login/refresh")]
+pub async fn refresh_token(conn: DbConn, bearer_token_option: Option<Claims>) -> Result<Json<ClaimsEncoded>, Status> {
+  if bearer_token_option.is_none() { return Err(Status::UnprocessableEntity); }
+  let bearer_token = bearer_token_option.unwrap();
+
+  let new_token = Claims::from_existing(&bearer_token);
+
+  let refresh_token_id = db::tokens::select_refresh_token_id(&conn, bearer_token.refresh_token()).await;
+  if refresh_token_id.is_none() { return Err(Status::InternalServerError); }
+
+  Claims::delete_obsolete_access_tokens(&conn, refresh_token_id.unwrap()).await;
+
+  if new_token.add_access_token_to_db(&conn, refresh_token_id.unwrap()).await.is_none() { return Err(Status::InternalServerError); }
+
+  let new_encoded_token = new_token.encode();
+  if new_encoded_token.is_err() { return Err(Status::InternalServerError); }
+
+  Ok(Json(new_encoded_token.unwrap()))
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Queryable)]

@@ -12,7 +12,7 @@ use serde::{Serialize, Deserialize};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, TokenData, Validation};
 use uuid::Uuid;
 use rocket::http::Status;
-use crate::db::users;
+use crate::db::{self, tokens::{insert_access_token, insert_refresh_token}, users};
 use crate::DbConn;
 use crate::auth::secret::Secret;
 
@@ -34,7 +34,7 @@ use anyhow::{self, Context};
 /// }
 /// ```
 /// for more information, see [Rocket documentation](https://rocket.rs/v0.5-rc/guide/requests/#request-guards).
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct Claims {
   /// expiration time
   exp: i64,
@@ -42,8 +42,10 @@ pub struct Claims {
   iat: i64,
   /// ID of a user
   pub user_id: i32,
-  /// Refresh token
+  /// Refresh token - used to refresh access token
   refresh_token: String,
+  /// Access token - used to access data
+  access_token: String,
 }
 
 /// Encoded bearer token
@@ -54,11 +56,17 @@ pub struct Claims {
 ///
 /// let decoded_token = encoded_token.decode();
 /// ```
+#[derive(Serialize, JsonSchema)]
 pub struct ClaimsEncoded {
   encoded_claims: String,
 }
 
 impl ClaimsEncoded {
+  /// Returns the encoded_claims.
+  pub fn encoded_claims(&self) -> String {
+    self.encoded_claims.clone()
+  }
+
   /// Decodes a bearer token.
   pub fn decode(self) -> anyhow::Result<TokenData<Claims>> {
     let secret = Secret::read().context("Secret couldn't be read.")?;
@@ -150,12 +158,93 @@ impl Claims {
       exp: current_time + expiraton_time,
       iat: current_time,
       user_id,
-      refresh_token: Claims::generate_refresh_token(),
+      refresh_token: Claims::generate_random_string(),
+      access_token: Claims::generate_random_string()
     }
   }
 
-  /// Generates a new refresh token.
-  fn generate_refresh_token() -> String {
+  /// Makes a new token from an old one.
+  /// # Example
+  /// This will recreate a bearer token for user with ID 1.
+  /// ```
+  /// let bearer_token = Claims::new(1);
+  ///
+  /// let new_token = Claims::from_existing(&bearer_token);
+  /// ```
+
+  pub fn from_existing(token: &Claims) -> Claims {
+    let mut new_token = Claims::new(token.user_id);
+    new_token.refresh_token = token.refresh_token.clone();
+
+    new_token
+  }
+
+  /// Returns the refresh_token.
+  pub fn refresh_token(&self) -> String {
+    self.refresh_token.clone()
+  }
+
+  /// Returns the access_token.
+  pub fn access_token(&self) -> String {
+    self.access_token.clone()
+  }
+
+  /// Adds a new refresh token to the database.
+  /// # Example
+  /// Adds the refresh_token of a bearer token for user with ID 1 to the database.
+  /// ```
+  /// let bearer_token = Claims::new(1);
+  ///
+  /// bearer_token.add_refresh_token_to_db(conn)
+  /// ```
+  pub async fn add_refresh_token_to_db(&self, conn: &DbConn) -> Option<i32> {
+    insert_refresh_token(conn, self.user_id, self.refresh_token()).await;
+
+    Some(db::general::get_last_insert_id(conn).await?)
+  }
+
+  /// Adds a new access token to the database.
+  /// # Example
+  /// Adds the access_token of a bearer token for user with ID 1 to the database.
+  /// ```
+  /// let bearer_token = Claims::new(1);
+  ///
+  /// let refresh_token_id = bearer_token.add_refresh_token_to_db(conn).await?;
+  /// bearer_token.add_access_token_to_db(conn, refresh_token_id).await?;
+  /// ```
+  pub async fn add_access_token_to_db(&self, conn: &DbConn, refresh_token_id: i32) -> Option<i32> {
+    insert_access_token(conn, refresh_token_id, self.access_token()).await;
+
+    Some(db::general::get_last_insert_id(conn).await?)
+  }
+
+  /// Deletes obsolete access tokens for a given refresh token ID from the database.
+  /// # Example
+  /// This will create a bearer token and refresh it.
+  /// ```
+  /// let bearer_token = Claims::new(1);
+  ///
+  /// // add refresh and access tokens to db
+  /// let refresh_token_id = bearer_token.add_refresh_token_to_db(conn).await?;
+  /// bearer_token.add_access_token_to_db(conn, refresh_token_id).await?;
+  ///
+  /// // create a new token from the previous one; only the refresh_token will be the same
+  /// let new_token = Claims::from_existing(&bearer_token);
+  ///
+  /// // remove obsolete access tokens
+  /// Claims::delete_obsolete_access_tokens(&conn, refresh_token_id).await;
+  ///
+  /// // add a new access token
+  /// new_token.add_access_token_to_db(conn, refresh_token_id).await?;
+  /// ```
+  pub async fn delete_obsolete_access_tokens(conn: &DbConn, refresh_token_id: i32) -> Option<()> {
+    if db::tokens::delete_obsolete_access_tokens(conn, refresh_token_id).await.is_err() { return None; };
+
+    Some(())
+  }
+
+  /// Generates a new random string.
+  fn generate_random_string() -> String {
     return Uuid::new_v4().to_string();
   }
 }
