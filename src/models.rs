@@ -1,9 +1,12 @@
 use super::schema::{album, album_media, album_invite, auth_access_token, auth_refresh_token, folder, media, favorite_media, user};
 use chrono::{Duration, NaiveDateTime, Utc};
+use email_address::EmailAddress;
+use lazy_regex::regex_is_match;
+use nanoid::nanoid;
+use rocket_okapi::JsonSchema;
 use rocket::form::FromForm;
 use serde::{Serialize, Deserialize};
-use rocket_okapi::JsonSchema;
-use nanoid::nanoid;
+use sha2::Digest;
 
 #[allow(non_camel_case_types)]
 #[derive(Identifiable, Queryable)]
@@ -27,6 +30,61 @@ pub struct NewUser {
 impl NewUser {
   pub fn new(username: String, email: String, password: String) -> NewUser {
     return NewUser { username, email, password };
+  }
+
+  /// Encrypts the password.
+  // TODO: deduplicate later
+  pub fn hash_password(mut self) -> Self {
+    let mut hasher = sha2::Sha512::new();
+    hasher.update(self.password);
+    // {:x} means format as hexadecimal
+    self.password = format!("{:X}", hasher.finalize());
+
+    self
+  }
+
+  /// Checks the email.
+  pub fn is_email_valid(&self) -> bool {
+    EmailAddress::is_valid(&self.email)
+  }
+
+  /// Runs username, email and password checks.
+  pub fn check(&self) -> bool {
+    self.check_username() && self.is_email_valid() && self.check_password()
+  }
+
+  /// Checks the password.
+  ///
+  /// # Validity
+  ///
+  /// The **minimum length is 8 characters** and the **maximum is 128**.\
+  /// There are **no limits on what characters you can use**
+  /// because it could make cracking passwords easier.\
+  /// Maximum length limit is there to prevent long password denial of service
+  pub fn check_password(&self) -> bool {
+    let len = self.password.chars().count();
+
+    if len < 8 || len > 128 { return false; }
+
+    true
+  }
+
+  /// Checks the username.
+  ///
+  /// # Validity
+  ///
+  /// The **minimum length is 5 characters** and the **maximum is 30**.\
+  /// The first character of a username must be a letter.\
+  /// Usernames are low-caps only and can contain these characters:
+  /// 1. latin letters (a-z)
+  /// 2. numbers (0-9)
+  /// 3. underscore (_)
+  pub fn check_username(&self) -> bool {
+    let len = self.password.chars().count();
+
+    if len < 5 || len > 30 { return false; }
+
+    regex_is_match!(r"^[a-z_][a-z0-9_]{4,29}$", &self.username.as_str())
   }
 }
 
