@@ -1,3 +1,15 @@
+#![warn(
+  clippy::doc_markdown,
+  clippy::unused_self,
+  unused_extern_crates,
+  unused_qualifications
+)]
+
+#![allow(
+  clippy::manual_range_contains,
+  clippy::too_many_arguments
+)]
+
 #[macro_use]
 extern crate diesel;
 
