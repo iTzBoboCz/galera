@@ -404,17 +404,3 @@ pub async fn media_unlike(claims: Claims, conn: DbConn, media_uuid: String) -> R
 
   Ok(Status::Ok)
 }
-
-#[openapi]
-#[get("/test")]
-pub async fn test(conn: DbConn) -> String {
-  let media: i32 = conn.run(|c| {
-  // check wheter the file is already in a database
-  return crate::schema::media::table
-    .select(crate::schema::media::id)
-    .first::<i32>(c)
-    .unwrap();
-  }).await;
-
-  media.to_string()
-}
