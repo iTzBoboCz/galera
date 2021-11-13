@@ -1,4 +1,4 @@
-use crate::models::{self, *};
+use crate::models::{Album, Media, NewAlbum, NewAlbumMedia};
 use crate::routes::{AlbumInsertData, AlbumUpdateData};
 use crate::schema::{album, album_media, media};
 use crate::DbConn;
@@ -51,12 +51,10 @@ pub async fn select_album_id(conn: &DbConn, album_uuid: String) -> Option<i32> {
 pub async fn insert_album(conn: &DbConn, user_id: i32, album_insert_data: AlbumInsertData) {
   let new_album = NewAlbum::new(user_id, album_insert_data.name, album_insert_data.description, None);
   conn.run(move |c| {
-    let insert = diesel::insert_into(album::table)
+    diesel::insert_into(album::table)
       .values(new_album.clone())
       .execute(c)
-      .expect(format!("Could not add a new album for user with ID {}", new_album.owner_id).as_str());
-
-    return insert;
+      .unwrap_or_else(|_| panic!("Could not add a new album for user with ID {}", new_album.owner_id));
   }).await;
 }
 

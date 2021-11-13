@@ -1,17 +1,15 @@
 use crate::db;
-use crate::models::{self, *};
+use crate::models::{Folder, NewFolder};
 use crate::DbConn;
 use futures::executor;
-use infer;
 use std::fs;
 use std::fs::create_dir_all;
 use std::path::{Path, PathBuf};
-use image;
 
 /// checks if the file type is supported.
 /// returns **true** for example for **image/jpeg**
 /// and **false** for **text/json**
-pub fn is_media_supported(pathbuf: &PathBuf) -> bool {
+pub fn is_media_supported(pathbuf: &Path) -> bool {
   let valid_mime_types = [
     "image/jpeg",
     "image/png",
@@ -51,7 +49,7 @@ pub fn is_media_supported(pathbuf: &PathBuf) -> bool {
     return true;
   }
 
-  return false;
+  false
 }
 
 /// Scans folders recursively
@@ -85,13 +83,13 @@ pub fn scan_recursively(path: PathBuf, array: &mut Vec<PathBuf>) -> bool {
     .map(|r| r.unwrap().path()) // This is safe, since we only have the Ok variants
     .filter(|r| r.is_file())
     .filter(|r| is_media_supported(r))
-    .collect::<Vec<PathBuf>>();
+    .count();
 
-  if files.len() > 0 {
+  if files > 0 {
     array.push(path);
-    return true;
+    true
   } else {
-    return false;
+    false
   }
 }
 
@@ -121,10 +119,9 @@ pub async fn scan_root(conn: &DbConn, xdg_data: &str, user_id: i32) {
   let folders = fs::read_dir(current_dir.clone()).unwrap()
     .into_iter()
     .filter(|r| r.is_ok()) // Get rid of Err variants for Result<DirEntry>
-    .map(|r| r.unwrap().path()) // This is safe, since we only have the Ok variants
-    .collect::<Vec<PathBuf>>();
+    .count();
 
-  if folders.len() > 0 {
+  if folders > 0 {
     scan_recursively(PathBuf::from(current_dir), &mut found_folders);
   }
 
@@ -153,11 +150,10 @@ pub async fn add_folders_to_db(conn: &DbConn, paths: Vec<PathBuf>, xdg_data: &st
 
     let path_string = path.display().to_string();
     let path_stripped = path_string.strip_prefix(&root).unwrap().to_string().to_owned();
-    let string_split = path_stripped.split("/").into_iter().map(|f| f.to_owned()).collect::<Vec<_>>();
+    let string_split = path_stripped.split('/').into_iter().map(|f| f.to_owned());
 
     let mut parent: Option<i32> = None;
-    let mut i: i32 = 0;
-    for s in string_split {
+    for (i, s) in string_split.enumerate() {
       let folder_id: Option<i32>;
       if i == 0 {
         parent = None;
@@ -181,8 +177,6 @@ pub async fn add_folders_to_db(conn: &DbConn, paths: Vec<PathBuf>, xdg_data: &st
       } else {
         parent = folder_id;
       }
-
-      i = i + 1;
     }
   }
 }
@@ -203,12 +197,12 @@ pub async fn scan_folders_for_media(conn: &DbConn, xdg_data: &str, user_id: i32)
 }
 
 pub fn scan_select(conn: &DbConn, parent_folder: Folder, mut path: String, xdg_data: &str, user_id: i32, username: String) {
-  if path == "" {
+  if path.is_empty() {
     path = format!("{}/{}/{}/", xdg_data, username, parent_folder.name);
   }
-  let folders: Vec<models::Folder> = executor::block_on(db::folders::select_subfolders(conn, parent_folder.clone(), user_id));
+  let folders: Vec<Folder> = executor::block_on(db::folders::select_subfolders(conn, parent_folder.clone(), user_id));
 
-  scan_folder_media(conn, parent_folder.clone(), path.clone(), xdg_data, user_id, username.clone());
+  scan_folder_media(conn, parent_folder, path.clone(), xdg_data, user_id, username.clone());
 
   for folder in folders {
     scan_select(conn, folder.clone(), format!("{}/{}/", path.clone(), folder.name), xdg_data, user_id, username.clone());
@@ -271,7 +265,7 @@ pub fn select_parent_folder_recursive(conn: &DbConn, current_folder: Folder, use
 
   vec.push(parent.clone().unwrap());
 
-  return select_parent_folder_recursive(conn, parent.clone().unwrap(), user_id, vec);
+  select_parent_folder_recursive(conn, parent.unwrap(), user_id, vec)
 }
 
 
@@ -286,5 +280,5 @@ pub fn folder_get_media(dir: PathBuf) -> Option<Vec<PathBuf>> {
     .filter(|r| is_media_supported(r)) // Filter out non-folders
     .collect();
 
-  return Some(data);
+  Some(data)
 }

@@ -1,4 +1,4 @@
-use crate::models::{self, *};
+use crate::models::{Folder, NewFolder};
 use crate::schema::folder;
 use crate::DbConn;
 use diesel::BoolExpressionMethods;
@@ -11,12 +11,10 @@ use std::path::PathBuf;
 
 pub async fn insert_folder(conn: &DbConn, new_folder: NewFolder, name: String, path: PathBuf) {
   conn.run(move |c| {
-    let insert = diesel::insert_into(folder::table)
+    diesel::insert_into(folder::table)
       .values(new_folder)
       .execute(c)
-      .expect(format!("Error scanning folder {} in {}", name, path.display().to_string()).as_str());
-
-    return insert;
+      .unwrap_or_else(|_| panic!("Error scanning folder {} in {}", name, path.display().to_string()));
   }).await;
 }
 
@@ -43,7 +41,7 @@ pub async fn select_child_folder_id(conn: &DbConn, name: String, parent: Option<
   }
 }
 
-pub async fn select_root_folders(conn: &DbConn, user_id: i32) -> Vec<models::Folder> {
+pub async fn select_root_folders(conn: &DbConn, user_id: i32) -> Vec<Folder> {
   conn.run(move |c| {
     folder::table
       .select(folder::table::all_columns())
@@ -55,7 +53,7 @@ pub async fn select_root_folders(conn: &DbConn, user_id: i32) -> Vec<models::Fol
   }).await
 }
 
-pub async fn select_subfolders(conn: &DbConn, parent_folder: Folder, user_id: i32) -> Vec<models::Folder> {
+pub async fn select_subfolders(conn: &DbConn, parent_folder: Folder, user_id: i32) -> Vec<Folder> {
   conn.run(move |c| {
     folder::table
       .select(folder::table::all_columns())
@@ -73,7 +71,7 @@ pub async fn select_subfolders(conn: &DbConn, parent_folder: Folder, user_id: i3
 /// ```
 /// let folder: Folder = select_folder(&conn, 10);
 /// ```
-pub async fn select_folder(conn: &DbConn, folder_id: i32) -> Option<models::Folder> {
+pub async fn select_folder(conn: &DbConn, folder_id: i32) -> Option<Folder> {
   conn.run(move |c| {
     folder::table
       .select(folder::table::all_columns())
@@ -92,11 +90,10 @@ pub async fn select_folder(conn: &DbConn, folder_id: i32) -> Option<models::Fold
 /// let parent_folder: Option<Folder> = select_parent_folder(&conn, current_folder, 1);
 /// ```
 pub async fn select_parent_folder(conn: &DbConn, current_folder: Folder, user_id: i32) -> Option<Folder> {
-  if current_folder.parent.is_none() { return None; }
   conn.run(move |c| {
     folder::table
       .select(folder::table::all_columns())
-      .filter(folder::dsl::id.eq(current_folder.parent.unwrap()).and(folder::owner_id.eq(user_id)))
+      .filter(folder::dsl::id.eq(current_folder.parent?).and(folder::owner_id.eq(user_id)))
       .first::<Folder>(c)
       .ok()
   }).await

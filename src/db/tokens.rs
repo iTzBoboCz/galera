@@ -26,7 +26,7 @@ pub async fn insert_refresh_token(conn: &DbConn, user_id: i32, refresh_token: St
   Some(())
 }
 
-/// Selects refresh token ID from refresh_token.
+/// Selects refresh token ID from a given refresh token.
 pub async fn select_refresh_token_id(conn: &DbConn, refresh_token: String) -> Option<i32> {
   conn.run(move |c| {
     auth_refresh_token::table

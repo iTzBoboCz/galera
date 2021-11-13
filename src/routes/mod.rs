@@ -1,8 +1,7 @@
 use crate::auth::login::{UserLogin, UserInfo, LoginResponse};
 use crate::auth::token::{Claims, ClaimsEncoded};
-use crate::db;
-use crate::db::users::get_user_by_id;
-use crate::models::{self, *};
+use crate::db::{self, users::get_user_by_id};
+use crate::models::{Album, Folder, Media, NewAlbum, NewAlbumMedia, NewUser};
 use crate::scan;
 use crate::schema::media;
 use crate::DbConn;
@@ -12,7 +11,6 @@ use diesel::OptionalExtension;
 use diesel::QueryDsl;
 use diesel::RunQueryDsl;
 use diesel::Table;
-use futures::executor;
 use rocket::{fs::NamedFile, http::Status};
 use serde::{Deserialize, Serialize};
 use schemars::JsonSchema;
@@ -91,7 +89,7 @@ pub struct MediaResponse {
   pub owner_id: i32,
   pub width: u32,
   pub height: u32,
-  pub date_taken: chrono::NaiveDateTime,
+  pub date_taken: NaiveDateTime,
   pub uuid: String,
 }
 
@@ -194,7 +192,7 @@ pub async fn get_album_list(claims: Claims, conn: DbConn) -> Json<Vec<AlbumRespo
   let albums = db::albums::get_album_list(&conn, claims.user_id).await;
 
   let result = albums.iter()
-    .map(|r| AlbumResponse::from(r))
+    .map(AlbumResponse::from)
     .collect::<Vec<AlbumResponse>>();
 
   Json(result)
@@ -228,7 +226,7 @@ pub async fn get_album_structure(claims: Claims, conn: DbConn, album_uuid: Strin
   if structure.is_err() { return Err(Status::InternalServerError) }
 
   let result = structure.unwrap().iter()
-    .map(|r| MediaResponse::from(r))
+    .map(MediaResponse::from)
     .collect::<Vec<MediaResponse>>();
 
   Ok(Json(result))
@@ -314,30 +312,27 @@ pub async fn scan_media(claims: Claims, conn: DbConn) -> &'static str {
 #[openapi]
 #[get("/media/<media_uuid>")]
 pub async fn get_media_by_uuid(claims: Claims, conn: DbConn, media_uuid: String) -> Option<NamedFile> {
-  let media: models::Media = conn.run(|c| {
-    return crate::schema::media::table
-      .select(crate::schema::media::table::all_columns())
+  let media: Media = conn.run(|c| {
+    media::table
+      .select(media::table::all_columns())
       .filter(media::dsl::uuid.eq(media_uuid))
       .first::<Media>(c)
       .optional()
-      .unwrap();
+      .unwrap()
   }).await?;
 
   let xdg_data = "gallery";
 
   let mut folders: Vec<Folder> = vec!();
 
-  let current_folder = executor::block_on(db::folders::select_folder(&conn, media.folder_id));
-  if current_folder.is_none() { return None; }
-  folders.push(current_folder.clone().unwrap());
+  let current_folder = db::folders::select_folder(&conn, media.folder_id).await?;
+  folders.push(current_folder.clone());
 
-  scan::select_parent_folder_recursive(&conn, current_folder.unwrap(), claims.user_id, &mut folders);
+  scan::select_parent_folder_recursive(&conn, current_folder, claims.user_id, &mut folders);
 
-  let relative_path = format!("{}/{}/", xdg_data, db::users::get_user_username(&conn, media.owner_id).await.unwrap());
+  let mut path = format!("{}/{}/", xdg_data, db::users::get_user_username(&conn, media.owner_id).await?);
 
-  let mut path = relative_path;
-
-  if folders.len() > 0 {
+  if !folders.is_empty() {
     for folder in folders.iter().rev() {
       path += format!("{}/", folder.name).as_str();
     }
@@ -358,7 +353,7 @@ pub async fn get_media_liked_list(claims: Claims, conn: DbConn) -> Result<Json<V
   }
 
   let result = liked.unwrap().iter()
-    .map(|r| MediaResponse::from(r))
+    .map(MediaResponse::from)
     .collect::<Vec<MediaResponse>>();
 
   Ok(Json(result))
@@ -383,7 +378,7 @@ pub async fn media_like(claims: Claims, conn: DbConn, media_uuid: String) -> Res
   }
 
   error!("Inserting like failed: {}", changed_rows.unwrap_err());
-  return Err(Status::Conflict);
+  Err(Status::Conflict)
 }
 
 /// Unlikes the media.

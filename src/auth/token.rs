@@ -62,7 +62,7 @@ pub struct ClaimsEncoded {
 }
 
 impl ClaimsEncoded {
-  /// Returns the encoded_claims.
+  /// Returns the encoded token.
   pub fn encoded_claims(&self) -> String {
     self.encoded_claims.clone()
   }
@@ -74,8 +74,7 @@ impl ClaimsEncoded {
     let decoded = jsonwebtoken::decode::<Claims>(self.encoded_claims.as_str(), &DecodingKey::from_secret(secret.as_ref()), &Validation::new(Algorithm::HS512));
 
     // TODO: better error messages
-    if decoded.is_err() {
-        let err =  decoded.unwrap_err();
+    if let Err(err) = decoded {
         let context = format!("Decoding went wrong. {}.", err);
         return Err(anyhow::Error::new( err).context(context));
     }
@@ -116,7 +115,7 @@ impl Claims {
     // expiration
     !self.is_expired()
     // valid user
-    && users::get_user_username(&conn, self.user_id.clone()).await.is_some()
+    && users::get_user_username(&conn, self.user_id).await.is_some()
     // TODO: other checks
     // valid refresh_token
     // && db::users::(&conn, user_id,)
@@ -134,8 +133,7 @@ impl Claims {
     let encoded_claims = jsonwebtoken::encode(&header, &self, &EncodingKey::from_secret(secret.as_bytes()));
 
     // TODO: better error messages
-    if encoded_claims.is_err() {
-        let err =  encoded_claims.unwrap_err();
+    if let Err(err) = encoded_claims {
         let context = format!("Encoding went wrong. {}.", err);
         return Err(anyhow::Error::new( err).context(context));
     }
@@ -179,19 +177,19 @@ impl Claims {
     new_token
   }
 
-  /// Returns the refresh_token.
+  /// Returns the refresh token.
   pub fn refresh_token(&self) -> String {
     self.refresh_token.clone()
   }
 
-  /// Returns the access_token.
+  /// Returns the access token.
   pub fn access_token(&self) -> String {
     self.access_token.clone()
   }
 
   /// Adds a new refresh token to the database.
   /// # Example
-  /// Adds the refresh_token of a bearer token for user with ID 1 to the database.
+  /// Adds the `refresh_token` of a bearer token for user with ID 1 to the database.
   /// ```
   /// let bearer_token = Claims::new(1);
   ///
@@ -205,7 +203,7 @@ impl Claims {
 
   /// Adds a new access token to the database.
   /// # Example
-  /// Adds the access_token of a bearer token for user with ID 1 to the database.
+  /// Adds the `access_token` of a bearer token for user with ID 1 to the database.
   /// ```
   /// let bearer_token = Claims::new(1);
   ///
@@ -245,7 +243,7 @@ impl Claims {
 
   /// Generates a new random string.
   fn generate_random_string() -> String {
-    return Uuid::new_v4().to_string();
+    Uuid::new_v4().to_string()
   }
 }
 
@@ -276,9 +274,7 @@ impl<'r> FromRequest<'r> for Claims {
     let bearer_token_encoded: &str = authorization_header[0][6..authorization_header[0].len()].trim();
     let bearer_token_decoded = Claims::try_from(bearer_token_encoded);
 
-    if bearer_token_decoded.is_ok() {
-      let claims = bearer_token_decoded.unwrap();
-
+    if let Ok(claims) = bearer_token_decoded {
       if claims.is_valid(conn).await { return Outcome::Success(claims) };
 
       error!("Bearer token is invalid.");
@@ -339,13 +335,13 @@ impl<'a, 'r> OpenApiFromRequest<'a> for DbConn {
 /// Returns an empty, default `Response`. Always returns `Ok`.
 /// Defines the possible response for this request guard
 impl<'a, 'r: 'a> rocket::response::Responder<'a, 'r> for Claims {
-  fn respond_to(self, _: &rocket::request::Request<'_>) -> rocket::response::Result<'static> {
+  fn respond_to(self, _: &Request<'_>) -> rocket::response::Result<'static> {
     Ok(Response::new())
   }
 }
 
 impl<'a, 'r: 'a> rocket::response::Responder<'a, 'r> for DbConn {
-  fn respond_to(self, _: &rocket::request::Request<'_>) -> rocket::response::Result<'static> {
+  fn respond_to(self, _: &Request<'_>) -> rocket::response::Result<'static> {
     Ok(Response::new())
   }
 }

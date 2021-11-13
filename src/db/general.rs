@@ -16,11 +16,9 @@ pub async fn get_last_insert_id(conn: &DbConn) -> Option<i32> {
   conn.run(|c| {
     no_arg_sql_function!(last_insert_id, Integer);
 
-    let generated_id: Option<i32> = select(last_insert_id)
+    select(last_insert_id)
       .first(c)
       .optional()
-      .unwrap();
-
-    return generated_id;
+      .unwrap()
   }).await
 }

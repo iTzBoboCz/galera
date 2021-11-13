@@ -1,5 +1,4 @@
-use crate::models::NewUser;
-use crate::models::User;
+use crate::models::{NewUser, User};
 use crate::schema::user;
 use crate::DbConn;
 use diesel::BoolExpressionMethods;
@@ -21,12 +20,10 @@ use diesel::Table;
 /// ```
 pub async fn insert_user(conn: &DbConn, user: NewUser) -> usize {
   conn.run(move |c| {
-    let insert = diesel::insert_into(user::table)
+    diesel::insert_into(user::table)
       .values(user.clone())
       .execute(c)
-      .expect(format!("Error creating user {}", user.username).as_str());
-
-    return insert;
+      .unwrap_or_else(|_| panic!("Error creating user {}", user.username))
   }).await
 }
 
@@ -67,14 +64,12 @@ pub async fn is_user_unique(conn: &DbConn, user: NewUser) -> bool {
 /// ```
 pub async fn get_user_id(conn: &DbConn, username: String) -> Option<i32> {
   conn.run(move |c| {
-    let user_id: Option<i32> = user::table
+    user::table
       .select(user::id)
       .filter(user::username.eq(username))
       .first(c)
       .optional()
-      .unwrap();
-
-    return user_id;
+      .unwrap()
   }).await
 }
 
@@ -86,14 +81,12 @@ pub async fn get_user_id(conn: &DbConn, username: String) -> Option<i32> {
 /// ```
 pub async fn get_user_username(conn: &DbConn, user_id: i32) -> Option<String> {
   conn.run(move |c| {
-    let username: Option<String> = user::table
+    user::table
       .select(user::username)
       .filter(user::id.eq(user_id))
       .first(c)
       .optional()
-      .unwrap();
-
-    return username;
+      .unwrap()
   }).await
 }
 
@@ -109,7 +102,7 @@ pub async fn get_user_by_id(conn: &DbConn, user_id: i32) -> Option<User> {
   }).await
 }
 
-/// Tries to select a user_id from a given email.
+/// Tries to select a user ID from a given email.
 pub async fn get_user_id_email(conn: &DbConn, email: String) -> Option<i32> {
   conn.run(move |c| {
     user::table

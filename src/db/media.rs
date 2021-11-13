@@ -1,5 +1,6 @@
 use crate::models::*;
 use crate::schema::{favorite_media, media};
+use crate::routes::MediaResponse;
 use crate::DbConn;
 use checksums::{hash_file, Algorithm::SHA2512};
 use chrono::NaiveDateTime;
@@ -20,49 +21,47 @@ use uuid::Uuid;
 /// ```
 pub async fn check_if_media_present(conn: &DbConn, name: String, parent_folder: Folder, user_id: i32) -> Option<i32> {
   conn.run(move |c| {
-    return media::table
+    media::table
       .select(media::id)
       .filter(media::dsl::filename.eq(name).and(media::owner_id.eq(user_id).and(media::folder_id.eq(parent_folder.id))))
       .first::<i32>(c)
       .optional()
-      .unwrap();
+      .unwrap()
   }).await
 }
 
 /// Inserts new media.
 pub async fn insert_media(conn: &DbConn, name: String, parent_folder: Folder, user_id: i32, image_dimensions: (u32, u32), media_scanned: PathBuf) {
   conn.run(move |c| {
-    // error!("file {} doesnt exist", name.display().to_string());
     let uuid = Uuid::new_v4().to_string();
     let new_media = NewMedia::new(name.clone(), parent_folder.id, user_id, image_dimensions.0, image_dimensions.1, NaiveDateTime::from_timestamp(10, 10), uuid, hash_file(&media_scanned, SHA2512));
-    let insert = diesel::insert_into(media::table)
+
+    diesel::insert_into(media::table)
       .values(new_media)
       .execute(c)
-      .expect(format!("Error inserting file {:?}", name).as_str());
-
-    return insert;
+      .unwrap_or_else(|_| panic!("Error inserting file {:?}", name))
   }).await;
 }
 
 /// Returns a skeleton media list.
-pub async fn get_media_structure(conn: &DbConn, user_id: i32) -> Vec<crate::routes::MediaResponse> {
+pub async fn get_media_structure(conn: &DbConn, user_id: i32) -> Vec<MediaResponse> {
   let structure: Vec<Media> = conn.run(move |c| {
-    return media::table
+    media::table
       .select(media::table::all_columns())
       .filter(media::owner_id.eq(user_id))
       .load::<Media>(c)
       .unwrap()
   }).await;
 
-  let mut vec: Vec<crate::routes::MediaResponse> = vec!();
+  let mut vec: Vec<MediaResponse> = vec!();
 
   for response in structure {
     vec.push(
-      crate::routes::MediaResponse { filename: response.filename, owner_id: response.owner_id, width: response.width, height: response.height, date_taken: response.date_taken, uuid: response.uuid }
+      MediaResponse::from(response)
     )
   }
 
-  return vec;
+  vec
 }
 
 /// Tries to select a media ID from its UUID.

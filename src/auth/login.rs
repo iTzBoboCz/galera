@@ -12,7 +12,7 @@ pub struct UserLogin {
 }
 
 impl UserLogin {
-  /// Checks whether the username_or_email field is an email or not.
+  /// Checks whether the `username_or_email` field is an email or not.
   fn is_email(&self) -> bool {
     self.username_or_email.contains('@')
   }
@@ -59,7 +59,7 @@ pub struct UserInfo {
 }
 
 impl From<User> for UserInfo {
-  /// Converts a User struct to a UserInfo, which is a User struct without an id and a password field.\
+  /// Converts a `User` struct to a `UserInfo`, which is a User struct without an id and a password field.\
   /// # Example
   /// ```
   /// let user = User {

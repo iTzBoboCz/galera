@@ -43,6 +43,7 @@ mod schema;
 mod auth;
 mod directories;
 
+/// Connection to the database.
 #[database("galera")]
 pub struct DbConn(diesel::MysqlConnection);
 
@@ -57,7 +58,7 @@ fn rocket() -> _ {
 
   let secret_check = check_secret_startup();
   if secret_check.is_err() {
-    panic!("Secret couldn't be read and/or created: {}", secret_check.unwrap_err())
+    panic!("Secret couldn't be read and/or created: {}", secret_check.unwrap_err());
   }
 
   rocket::build()

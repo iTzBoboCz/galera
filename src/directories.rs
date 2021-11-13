@@ -40,7 +40,7 @@ impl Directories {
   fn check(path: &Path) -> Option<PathBuf> {
     if !path.is_dir() {
       warn!("Trying to create a missing directory on path {:?}.", path);
-      let created = fs::create_dir_all(path.clone());
+      let created = fs::create_dir_all(path);
 
       if created.is_err() {
         error!("Missing folder could not be created.");

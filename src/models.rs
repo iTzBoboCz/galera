@@ -29,7 +29,7 @@ pub struct NewUser {
 
 impl NewUser {
   pub fn new(username: String, email: String, password: String) -> NewUser {
-    return NewUser { username, email, password };
+    NewUser { username, email, password }
   }
 
   /// Encrypts the password.
@@ -84,7 +84,7 @@ impl NewUser {
 
     if len < 5 || len > 30 { return false; }
 
-    regex_is_match!(r"^[a-z_][a-z0-9_]{4,29}$", &self.username.as_str())
+    regex_is_match!(r"^[a-z_][a-z0-9_]{4,29}$", self.username.as_str())
   }
 }
 
@@ -111,7 +111,7 @@ pub struct NewFolder {
 
 impl NewFolder {
   pub fn new(owner_id: i32, name: String, parent: Option<i32>) -> NewFolder {
-    return NewFolder { owner_id, name, parent };
+    NewFolder { owner_id, name, parent }
   }
 }
 
@@ -217,7 +217,7 @@ pub struct NewMedia {
 
 impl NewMedia {
   pub fn new(filename: String, folder_id: i32, owner_id: i32, width: u32, height: u32, date_taken: NaiveDateTime, uuid: String, sha2_512: String) -> NewMedia {
-    return NewMedia {
+    NewMedia {
       filename,
       folder_id,
       owner_id,
@@ -226,7 +226,7 @@ impl NewMedia {
       date_taken,
       uuid,
       sha2_512,
-    };
+    }
   }
 }
 
@@ -251,10 +251,10 @@ pub struct NewFavoriteMedia {
 
 impl NewFavoriteMedia {
   pub fn new(media_id: i32,  user_id: i32) -> NewFavoriteMedia {
-  return NewFavoriteMedia {
+  NewFavoriteMedia {
       media_id,
       user_id,
-    };
+    }
   }
 }
 
