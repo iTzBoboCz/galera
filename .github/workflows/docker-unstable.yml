@@ -54,5 +54,4 @@ jobs:
           file: ".github/workflows/Dockerfile"
           tags: |
             ghcr.io/itzbobocz/galera:unstable
-            ghcr.io/itzbobocz/galera:unstable-static
-            ghcr.io/itzbobocz/galera:unstable-static.${{ steps.date.outputs.date }}.${{ steps.sha.outputs.sha }}
+            ghcr.io/itzbobocz/galera:unstable.${{ steps.date.outputs.date }}.${{ steps.sha.outputs.sha }}
