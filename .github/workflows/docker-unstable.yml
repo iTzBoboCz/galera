@@ -48,7 +48,7 @@ jobs:
       - name: Build images and push
         uses: docker/build-push-action@v2.6.1
         with:
-          context: .
+          context: ./target/release
           push: true
           platforms: linux/amd64 # TODO: add more platforms
           file: ".github/workflows/Dockerfile"

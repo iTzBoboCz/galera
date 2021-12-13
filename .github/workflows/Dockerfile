@@ -1,8 +1,8 @@
 FROM debian:buster-slim
 
-RUN apt update -y && apt install -y libmariadb-dev
+RUN apt update -y && apt install -y libmariadb-dev binutils
 
-COPY ./target/release/galera /usr/local/bin
+COPY galera /usr/local/bin
 
 RUN strip /usr/local/bin/galera
 
