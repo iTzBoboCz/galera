@@ -62,11 +62,40 @@ pub async fn login(conn: DbConn, user_login: Json<UserLogin>) -> Result<Json<Log
   )
 }
 
+/// Refreshes sent token
+// TODO: send token in header instead of body
+// https://stackoverflow.com/a/53881397
 #[openapi]
-#[post("/login/refresh")]
-pub async fn refresh_token(conn: DbConn, bearer_token_option: Option<Claims>) -> Result<Json<ClaimsEncoded>, Status> {
-  if bearer_token_option.is_none() { return Err(Status::UnprocessableEntity); }
-  let bearer_token = bearer_token_option.unwrap();
+#[post("/login/refresh", data = "<encoded_bearer_token>", format = "json")]
+pub async fn refresh_token(conn: DbConn, encoded_bearer_token: Json<ClaimsEncoded>) -> Result<Json<ClaimsEncoded>, Status> {
+  let bearer_token_result = encoded_bearer_token.into_inner();
+  let decoded = bearer_token_result.clone().decode();
+  let bearer_token: Claims;
+
+  // access token is expired - most of the time (token needs to be refreshed because it is expired)
+  if decoded.is_err() {
+    let expired = match decoded.unwrap_err().kind() {
+      jsonwebtoken::errors::ErrorKind::ExpiredSignature => true,
+      _ => false
+    };
+
+    // the error is not expired token
+    if !expired { return Err(Status::Unauthorized) }
+
+    let temp = bearer_token_result.decode_without_validation();
+
+    // couldn't be decoded
+    if temp.is_err() { return Err(Status::Unauthorized) }
+
+
+    bearer_token = temp.unwrap().claims
+  } else {
+    // access token is not yet expired
+    bearer_token = decoded.unwrap().claims;
+  }
+
+  // refresh token is expired
+  if bearer_token.is_refresh_token_expired(&conn).await { return Err(Status::Unauthorized); }
 
   let new_token = Claims::from_existing(&bearer_token);
 

@@ -12,7 +12,7 @@ use serde::{Serialize, Deserialize};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, TokenData, Validation};
 use uuid::Uuid;
 use rocket::http::Status;
-use crate::db::{self, tokens::{insert_access_token, insert_refresh_token}, users};
+use crate::db::{self, tokens::{insert_access_token, insert_refresh_token, select_refresh_token_expiration}, users};
 use crate::DbConn;
 use crate::auth::secret::Secret;
 
@@ -56,7 +56,7 @@ pub struct Claims {
 ///
 /// let decoded_token = encoded_token.decode();
 /// ```
-#[derive(Serialize, JsonSchema)]
+#[derive(Serialize, Deserialize, JsonSchema, Clone)]
 pub struct ClaimsEncoded {
   encoded_claims: String,
 }
@@ -68,22 +68,21 @@ impl ClaimsEncoded {
   }
 
   /// Decodes a bearer token.
-  pub fn decode(self) -> anyhow::Result<TokenData<Claims>> {
-    let secret = Secret::read().context("Secret couldn't be read.")?;
+  pub fn decode(self) -> Result<TokenData<Claims>, jsonwebtoken::errors::Error> {
+    let secret = Secret::read().context("Secret couldn't be read.").unwrap();
 
     let decoded = jsonwebtoken::decode::<Claims>(self.encoded_claims.as_str(), &DecodingKey::from_secret(secret.as_ref()), &Validation::new(Algorithm::HS512));
 
-    // TODO: better error messages
-    if let Err(err) = decoded {
-        let context = format!("Decoding went wrong. {}.", err);
-        return Err(anyhow::Error::new( err).context(context));
-    }
-    Ok(decoded.unwrap())
+    Ok(decoded?)
+  }
+
+  pub fn decode_without_validation(self) -> Result<TokenData<Claims>, jsonwebtoken::errors::Error> {
+    Ok(jsonwebtoken::dangerous_insecure_decode::<Claims>(self.encoded_claims.as_str())?)
   }
 }
 
 impl TryFrom<&str> for Claims {
-  type Error = anyhow::Error;
+  type Error = jsonwebtoken::errors::Error;
 
   /// Tries to convert encoded bearer token presented as a string to a Claims struct.\
   /// Will return error if token can't be decoded.
@@ -93,7 +92,7 @@ impl TryFrom<&str> for Claims {
   ///
   /// let result = Claims::try_from(my_bearer_string)?;
   /// ```
-  fn try_from(token: &str) -> anyhow::Result<Claims> {
+  fn try_from(token: &str) -> Result<Claims, Self::Error> {
     let encoded = ClaimsEncoded {
       encoded_claims: token.to_owned(),
     };
@@ -103,11 +102,23 @@ impl TryFrom<&str> for Claims {
 }
 
 impl Claims {
-  /// Checks whether the bearer token is expired or not.
+  /// Checks the exp field of bearer token for its expiration.
   fn is_expired(&self) -> bool {
     let current_time = Utc::now().timestamp();
 
     self.exp < current_time
+  }
+
+  /// Checks whether the refresh token is expired or not.
+  pub async fn is_refresh_token_expired(&self, conn: &DbConn) -> bool {
+    let refresh_token_exp = select_refresh_token_expiration(conn, self.refresh_token.clone()).await;
+    if refresh_token_exp.is_none() {
+      return true;
+    }
+
+    let current_time = Utc::now().timestamp();
+
+    refresh_token_exp.unwrap().timestamp() < current_time
   }
 
   /// Checks the validity of a bearer token.
@@ -259,7 +270,7 @@ impl<'r> FromRequest<'r> for Claims {
     // error!("headers: {:?}", headers);
     if headers.is_empty() {
       error!("Headers are not valid.");
-      return Outcome::Failure((Status::Unauthorized, ()));
+      return Outcome::Failure((Status::UnprocessableEntity, ()));
     }
     let authorization_header: Vec<&str> = headers
       .get("authorization")
@@ -268,7 +279,7 @@ impl<'r> FromRequest<'r> for Claims {
 
     if authorization_header.is_empty() {
       error!("Authorization header is empty!");
-      return Outcome::Failure((Status::Unauthorized, ()));
+      return Outcome::Failure((Status::UnprocessableEntity, ()));
     }
 
     let bearer_token_encoded: &str = authorization_header[0][6..authorization_header[0].len()].trim();
@@ -281,8 +292,14 @@ impl<'r> FromRequest<'r> for Claims {
       return Outcome::Failure((Status::Unauthorized, ()));
     }
 
-    error!("{}", bearer_token_decoded.unwrap_err());
-    Outcome::Failure((Status::InternalServerError, ()))
+    let error_status = match bearer_token_decoded.unwrap_err().kind() {
+      jsonwebtoken::errors::ErrorKind::ExpiredSignature => Status::Unauthorized,
+      _ => Status::UnprocessableEntity
+    };
+
+    // TODO: check refresh token validity and if access token still exists (one device => people cant steal it well)
+
+    Outcome::Failure((error_status, ()))
   }
 }
 

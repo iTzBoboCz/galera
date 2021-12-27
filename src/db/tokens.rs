@@ -1,6 +1,7 @@
 use crate::models::{NewAuthAccessToken, NewAuthRefreshToken};
 use crate::{DbConn};
 use crate::schema::{auth_access_token, auth_refresh_token};
+use chrono::NaiveDateTime;
 use diesel::RunQueryDsl;
 use diesel::QueryDsl;
 use diesel::OptionalExtension;
@@ -31,6 +32,18 @@ pub async fn select_refresh_token_id(conn: &DbConn, refresh_token: String) -> Op
   conn.run(move |c| {
     auth_refresh_token::table
       .select(auth_refresh_token::id)
+      .filter(auth_refresh_token::refresh_token.eq(refresh_token))
+      .first(c)
+      .optional()
+      .unwrap()
+  }).await
+}
+
+/// Selects expiration time from a given refresh token.
+pub async fn select_refresh_token_expiration(conn: &DbConn, refresh_token: String) -> Option<NaiveDateTime> {
+  conn.run(move |c| {
+    auth_refresh_token::table
+      .select(auth_refresh_token::expiration_time)
       .filter(auth_refresh_token::refresh_token.eq(refresh_token))
       .first(c)
       .optional()
