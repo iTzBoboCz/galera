@@ -118,19 +118,20 @@ pub struct MediaResponse {
   pub owner_id: i32,
   pub width: u32,
   pub height: u32,
+  pub description: Option<String>,
   pub date_taken: NaiveDateTime,
   pub uuid: String,
 }
 
 impl From<Media> for MediaResponse {
   fn from(media: Media) -> Self {
-    MediaResponse { filename: media.filename, owner_id: media.owner_id, width: media.width, height: media.height, date_taken: media.date_taken, uuid: media.uuid }
+    MediaResponse { filename: media.filename, owner_id: media.owner_id, width: media.width, height: media.height, description: media.description, date_taken: media.date_taken, uuid: media.uuid }
   }
 }
 
 impl From<&Media> for MediaResponse {
   fn from(media: &Media) -> Self {
-    MediaResponse { filename: media.filename.clone(), owner_id: media.owner_id, width: media.width, height: media.height, date_taken: media.date_taken, uuid: media.uuid.clone() }
+    MediaResponse { filename: media.filename.clone(), owner_id: media.owner_id, width: media.width, height: media.height, description: media.description.clone(), date_taken: media.date_taken, uuid: media.uuid.clone() }
   }
 }
 
