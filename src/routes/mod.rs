@@ -22,6 +22,7 @@ pub async fn index() -> &'static str {
   "Hello, world!"
 }
 
+/// Creates a new user
 #[openapi]
 #[post("/user", data = "<user>", format = "json")]
 pub async fn create_user(conn: DbConn, user: Json<NewUser>) -> Result<Status, Status> {
@@ -135,6 +136,7 @@ impl From<&Media> for MediaResponse {
   }
 }
 
+/// Gets a list of all media
 // FIXME: skips new media in /gallery/username/<medianame>; /gallery/username/<some_folder>/<medianame> works
 #[openapi]
 #[get("/media")]
@@ -203,6 +205,7 @@ pub async fn create_album(claims: Claims, conn: DbConn, album_insert_data: Json<
   Json(Some(AlbumResponse::from(album.unwrap())))
 }
 
+/// Adds media to an album
 #[openapi]
 #[post("/album/media", data = "<list_of_media>", format = "json")]
 pub async fn album_add_media(claims: Claims, conn: DbConn, list_of_media: Json<Vec<NewAlbumMedia>>) -> Result<(), Status> {
@@ -234,6 +237,7 @@ pub struct AlbumUpdateData {
   pub description: Option<String>,
 }
 
+/// Gets a list of media in an album
 #[openapi]
 #[get("/album/<album_uuid>/media")]
 pub async fn get_album_structure(claims: Claims, conn: DbConn, album_uuid: String) -> Result<Json<Vec<MediaResponse>>, Status> {
@@ -295,7 +299,7 @@ pub async fn update_album(claims: Claims, conn: DbConn, album_uuid: String, albu
   Ok(Status::Ok)
 }
 
-/// Creates a new album
+/// Deletes an album
 #[openapi]
 #[delete("/album/<album_uuid>")]
 pub async fn delete_album(claims: Claims, conn: DbConn, album_uuid: String) -> Result<Status, Status> {
@@ -323,6 +327,7 @@ pub async fn delete_album(claims: Claims, conn: DbConn, album_uuid: String) -> R
   Ok(Status::Ok)
 }
 
+/// Searches for new media
 // https://api.rocket.rs/master/rocket/struct.State.html
 #[openapi]
 #[get("/scan_media")]
@@ -339,6 +344,7 @@ pub async fn scan_media(claims: Claims, conn: DbConn) -> &'static str {
   "true"
 }
 
+/// Returns a media
 #[openapi]
 #[get("/media/<media_uuid>")]
 pub async fn get_media_by_uuid(claims: Claims, conn: DbConn, media_uuid: String) -> Option<NamedFile> {
