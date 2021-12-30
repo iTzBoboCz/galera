@@ -72,6 +72,7 @@ table! {
     owner_id -> Integer,
     width -> Unsigned<Integer>,
     height -> Unsigned<Integer>,
+    description -> Nullable<Varchar>,
     date_taken -> Timestamp,
     uuid -> Varchar,
     sha2_512 -> Varchar,

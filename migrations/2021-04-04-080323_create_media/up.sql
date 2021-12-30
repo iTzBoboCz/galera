@@ -5,6 +5,7 @@ CREATE TABLE `media` (
   `owner_id` INT NOT NULL,
   `width` INT UNSIGNED NOT NULL,
   `height` INT UNSIGNED NOT NULL,
+  `description` VARCHAR(255),
   `date_taken` TIMESTAMP NOT NULL,
   `uuid` VARCHAR(36) NOT NULL UNIQUE,
   `sha2_512` VARCHAR(128) NOT NULL,

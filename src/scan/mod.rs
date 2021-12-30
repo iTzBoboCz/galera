@@ -239,7 +239,7 @@ pub fn scan_folder_media(conn: &DbConn, parent_folder: Folder, path: String, xdg
         return;
       }
 
-      executor::block_on(db::media::insert_media(conn, name, parent_folder.clone(), user_id,  image_dimensions.unwrap(), media_scanned));
+      executor::block_on(db::media::insert_media(conn, name, parent_folder.clone(), user_id,  image_dimensions.unwrap(), None, media_scanned));
     }
   }
 }
