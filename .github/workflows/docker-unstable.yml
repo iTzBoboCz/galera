@@ -22,12 +22,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2.4.0
 
-      - name: Cache dependencies
-        uses: Swatinem/rust-cache@v1.3.0
-
-      - name: Build server
-        run: cargo build --release
-
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v1.2.0
 
@@ -51,10 +45,11 @@ jobs:
       - name: Build images and push
         uses: docker/build-push-action@v2.6.1
         with:
-          context: ./target/release
+          context: .
           push: true
-          platforms: linux/amd64 # TODO: add more platforms
-          file: ".github/workflows/Dockerfile"
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64, linux/arm64, linux/arm/v7, linux/arm/v6
           tags: |
             ghcr.io/itzbobocz/galera:unstable
             ghcr.io/itzbobocz/galera:unstable.${{ steps.date.outputs.date }}.${{ steps.sha.outputs.sha }}
