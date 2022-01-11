@@ -19,7 +19,7 @@ r2d2 = "0.8.9"
 
 # Logging
 log = "0.4.14"
-env_logger = "0.8.3"
+env_logger = "0.9.0"
 
 # Openapi
 rocket_okapi = { version = "0.8.0-rc.1", default-features = false, features = ["swagger"] }
