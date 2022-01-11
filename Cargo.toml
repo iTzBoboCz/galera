@@ -48,6 +48,7 @@ sha2 = "0.9.8"
 anyhow = "1.0.44"
 directories = "4.0"
 nanoid = "0.4.0"
+sys-info = "0.9.1"
 
 [dev-dependencies]
 
