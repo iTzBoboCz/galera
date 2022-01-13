@@ -378,6 +378,59 @@ pub async fn get_media_by_uuid(claims: Claims, conn: DbConn, media_uuid: String)
   NamedFile::open(path).await.ok()
 }
 
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct MediaDescription {
+  description: Option<String>
+}
+
+/// Updates description of a media
+#[openapi]
+#[put("/media/<media_uuid>/description", data = "<description>", format = "json")]
+pub async fn media_update_description(claims: Claims, conn: DbConn, media_uuid: String, description: String) -> Result<Status, Status> {
+  let media_id_option = db::media::select_media_id(&conn, media_uuid.clone()).await;
+  if media_id_option.is_none() {
+    return Err(Status::NotFound);
+  }
+
+  let access = db::media::media_user_has_access(&conn, media_uuid, claims.user_id).await;
+  if access.is_err() { return Err(Status::InternalServerError) }
+
+  if !access.unwrap() { return Err(Status::Forbidden) }
+
+  let media_id = media_id_option.unwrap();
+
+  let desc = if description.chars().count() > 0 { Some(description) } else { None };
+
+  let result = db::media::update_description(&conn, media_id, desc).await;
+
+  if result.is_err() { return Err(Status::InternalServerError) }
+
+  Ok(Status::Ok)
+}
+
+/// Deletes description of a media
+#[openapi]
+#[delete("/media/<media_uuid>/description")]
+pub async fn media_delete_description(claims: Claims, conn: DbConn, media_uuid: String) -> Result<Status, Status> {
+  let media_id_option = db::media::select_media_id(&conn, media_uuid.clone()).await;
+  if media_id_option.is_none() {
+    return Err(Status::NotFound);
+  }
+
+  let access = db::media::media_user_has_access(&conn, media_uuid, claims.user_id).await;
+  if access.is_err() { return Err(Status::InternalServerError) }
+
+  if !access.unwrap() { return Err(Status::Forbidden) }
+
+  let media_id = media_id_option.unwrap();
+
+  let result = db::media::update_description(&conn, media_id, None).await;
+
+  if result.is_err() { return Err(Status::InternalServerError) }
+
+  Ok(Status::Ok)
+}
+
 /// Returns a list of liked media.
 #[openapi]
 #[get("/media/liked")]

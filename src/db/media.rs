@@ -76,6 +76,21 @@ pub async fn select_media_id(conn: &DbConn, media_uuid: String) -> Option<i32> {
   }).await
 }
 
+/// Checks whether a user has access to the media.
+// TODO: check more places for permissions
+pub async fn media_user_has_access(conn: &DbConn, media_uuid: String, owner_id: i32) -> Result<bool, diesel::result::Error> {
+  conn.run(move |c| {
+    diesel::dsl::select(
+        diesel::dsl::exists(
+          media::table.filter(
+            media::dsl::uuid.eq(media_uuid).and(media::dsl::owner_id.eq(owner_id))
+          )
+        )
+      )
+      .get_result(c)
+  }).await
+}
+
 /// Likes the media.
 pub async fn media_like(conn: &DbConn, media_id: i32, user_id: i32) -> Result<usize, diesel::result::Error> {
   let new_like = NewFavoriteMedia::new(media_id, user_id);
@@ -108,5 +123,14 @@ pub async fn get_liked_media(conn: &DbConn, user_id: i32) -> Result<Vec<Media>, 
           .filter(favorite_media::user_id.eq(user_id))
       ))
       .get_results::<Media>(c)
+  }).await
+}
+
+/// Updates media description.
+pub async fn update_description(conn: &DbConn, media_id: i32, description: Option<String>) -> Result<usize, diesel::result::Error> {
+  conn.run(move |c| {
+    diesel::update(media::table.filter(media::id.eq(media_id)))
+      .set(media::dsl::description.eq(description))
+      .execute(c)
   }).await
 }

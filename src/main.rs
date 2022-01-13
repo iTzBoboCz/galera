@@ -84,7 +84,9 @@ fn rocket() -> _ {
         routes::get_album_structure,
         routes::media_like,
         routes::media_unlike,
-        routes::system_info_public
+        routes::system_info_public,
+        routes::media_update_description,
+        routes::media_delete_description
       ],
     )
     .mount(
