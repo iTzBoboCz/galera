@@ -386,7 +386,7 @@ pub struct MediaDescription {
 /// Updates description of a media
 #[openapi]
 #[put("/media/<media_uuid>/description", data = "<description>", format = "json")]
-pub async fn media_update_description(claims: Claims, conn: DbConn, media_uuid: String, description: String) -> Result<Status, Status> {
+pub async fn media_update_description(claims: Claims, conn: DbConn, media_uuid: String, description: Json<MediaDescription>) -> Result<Status, Status> {
   let media_id_option = db::media::select_media_id(&conn, media_uuid.clone()).await;
   if media_id_option.is_none() {
     return Err(Status::NotFound);
@@ -399,9 +399,14 @@ pub async fn media_update_description(claims: Claims, conn: DbConn, media_uuid: 
 
   let media_id = media_id_option.unwrap();
 
-  let desc = if description.chars().count() > 0 { Some(description) } else { None };
+  let mut description_option = description.into_inner().description;
 
-  let result = db::media::update_description(&conn, media_id, desc).await;
+  // check for empty string
+  if let Some(string) = description_option {
+    description_option = if string.chars().count() > 0 { Some(string) } else { None };
+  }
+
+  let result = db::media::update_description(&conn, media_id, description_option).await;
 
   if result.is_err() { return Err(Status::InternalServerError) }
 
