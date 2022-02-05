@@ -84,6 +84,27 @@ pub async fn album_add_media(conn: &DbConn, list_of_media: Vec<NewAlbumMedia>) -
   Some(())
 }
 
+pub async fn album_already_has_media(conn: &DbConn, album_id: i32, media_id: i32) -> Result<bool, diesel::result::Error> {
+  let id: Result<Option<i32>, diesel::result::Error> = conn.run(move |c| {
+    album_media::table
+    .select(album_media::id)
+    .filter(album_media::dsl::album_id.eq(album_id).and(album_media::dsl::media_id.eq(media_id)))
+    .first::<i32>(c)
+    .optional()
+  }).await;
+
+  if id.is_err() {
+    return Err(id.unwrap_err())
+  } else {
+    let id_unwrapped = id.unwrap();
+    if id_unwrapped.is_some() {
+      Ok(true)
+    } else {
+      Ok(false)
+    }
+  }
+}
+
 pub async fn update_album(conn: &DbConn, album_id: i32, album_update_data: AlbumUpdateData) -> Option<usize> {
   let mut name_result: Result<usize, diesel::result::Error> = Ok(0);
   let mut description_result: Result<usize, diesel::result::Error> = Ok(0);

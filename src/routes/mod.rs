@@ -223,19 +223,21 @@ pub async fn album_add_media(claims: Claims, conn: DbConn, list_of_media: Json<V
     if album_id.is_none() { continue; }
 
     let album_access = db::albums::user_has_album_access(&conn, claims.user_id, album_id.unwrap()).await;
-
     if album_access.is_err() { return Err(Status::InternalServerError) };
-
     if !album_access.unwrap() { return Err(Status::Forbidden) }
 
     let media_access = db::media::media_user_has_access(&conn, new.media_uuid.clone(), claims.user_id).await;
-
     if media_access.is_err() { return Err(Status::InternalServerError) };
-
     if !media_access.unwrap() { return Err(Status::Forbidden) }
 
     let media_id = db::media::select_media_id(&conn, new.media_uuid).await;
     if media_id.is_none() { continue; }
+
+    // skip media that is already present in the album
+    let has_media = db::albums::album_already_has_media(&conn, album_id.unwrap(), media_id.unwrap()).await;
+    if has_media.is_err() { return Err(Status::InternalServerError) };
+
+    if has_media.unwrap() { continue; }
 
     transformed.push(NewAlbumMedia {
       album_id: album_id.unwrap(),
