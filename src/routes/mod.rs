@@ -205,12 +205,45 @@ pub async fn create_album(claims: Claims, conn: DbConn, album_insert_data: Json<
   Json(Some(AlbumResponse::from(album.unwrap())))
 }
 
+#[derive(Deserialize, JsonSchema)]
+pub struct AlbumAddMedia {
+  album_uuid: String,
+  media_uuid: String,
+}
+
 /// Adds media to an album
 #[openapi]
 #[post("/album/media", data = "<list_of_media>", format = "json")]
-pub async fn album_add_media(claims: Claims, conn: DbConn, list_of_media: Json<Vec<NewAlbumMedia>>) -> Result<(), Status> {
-  // TODO: check media and album access
-  let r = db::albums::album_add_media(&conn, list_of_media.into_inner()).await;
+pub async fn album_add_media(claims: Claims, conn: DbConn, list_of_media: Json<Vec<AlbumAddMedia>>) -> Result<(), Status> {
+  let mut transformed = vec![];
+
+  // TODO: optimise this so it doesn't check the same data multiple times
+  for new in list_of_media.into_inner() {
+    let album_id = db::albums::select_album_id(&conn, new.album_uuid).await;
+    if album_id.is_none() { continue; }
+
+    let album_access = db::albums::user_has_album_access(&conn, claims.user_id, album_id.unwrap()).await;
+
+    if album_access.is_err() { return Err(Status::InternalServerError) };
+
+    if !album_access.unwrap() { return Err(Status::Forbidden) }
+
+    let media_access = db::media::media_user_has_access(&conn, new.media_uuid.clone(), claims.user_id).await;
+
+    if media_access.is_err() { return Err(Status::InternalServerError) };
+
+    if !media_access.unwrap() { return Err(Status::Forbidden) }
+
+    let media_id = db::media::select_media_id(&conn, new.media_uuid).await;
+    if media_id.is_none() { continue; }
+
+    transformed.push(NewAlbumMedia {
+      album_id: album_id.unwrap(),
+      media_id: media_id.unwrap()
+    })
+  }
+
+  let r = db::albums::album_add_media(&conn, transformed).await;
   if r.is_none() {
     return Err(Status::InternalServerError);
   }
