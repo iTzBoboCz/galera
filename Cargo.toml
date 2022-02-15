@@ -30,7 +30,7 @@ email_address = "0.2.0"
 lazy-regex = "2.2.2"
 
 # Media
-infer = "0.4.0"
+infer = "0.7.0"
 image = "0.23.14"
 
 # Utilities
