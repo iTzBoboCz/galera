@@ -30,6 +30,16 @@ table! {
 }
 
 table! {
+  album_share_link (id) {
+    id -> Integer,
+    album_id -> Integer,
+    uuid -> Varchar,
+    password -> Nullable<Varchar>,
+    expiration -> Nullable<Datetime>,
+  }
+}
+
+table! {
   auth_access_token (id) {
     id -> Integer,
     refresh_token_id -> Integer,
@@ -93,6 +103,7 @@ joinable!(album_invite -> album (album_id));
 joinable!(album_invite -> user (invited_user_id));
 joinable!(album_media -> album (album_id));
 joinable!(album_media -> media (media_id));
+joinable!(album_share_link -> album (album_id));
 joinable!(auth_access_token -> auth_refresh_token (refresh_token_id));
 joinable!(auth_refresh_token -> user (user_id));
 joinable!(favorite_media -> media (media_id));
@@ -105,6 +116,7 @@ allow_tables_to_appear_in_same_query!(
   album,
   album_invite,
   album_media,
+  album_share_link,
   auth_access_token,
   auth_refresh_token,
   favorite_media,

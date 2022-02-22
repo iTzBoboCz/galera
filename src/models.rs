@@ -1,4 +1,4 @@
-use super::schema::{album, album_media, album_invite, auth_access_token, auth_refresh_token, folder, media, favorite_media, user};
+use super::schema::{album, album_media, album_invite, album_share_link, auth_access_token, auth_refresh_token, folder, media, favorite_media, user};
 use chrono::{Duration, NaiveDateTime, Utc};
 use email_address::EmailAddress;
 use lazy_regex::regex_is_match;
@@ -163,6 +163,36 @@ pub struct Album_invite {
   pub invited_user_id: i32,
   pub accepted: bool,
   pub write_access: bool,
+}
+
+#[allow(non_camel_case_types)]
+#[derive(Identifiable, Queryable, Associations)]
+#[table_name = "album_share_link"]
+#[belongs_to(Album, foreign_key = "album_id")]
+pub struct AlbumShareLink {
+  pub id: i32,
+  pub album_id: i32,
+  pub uuid: String,
+  pub password: Option<String>,
+  pub expiration: Option<NaiveDateTime>
+}
+
+#[allow(non_camel_case_types)]
+#[derive(Insertable, Clone)]
+#[table_name = "album_share_link"]
+pub struct NewAlbumShareLink {
+  pub album_id: i32,
+  pub uuid: String,
+  pub password: Option<String>,
+  pub expiration: Option<NaiveDateTime>
+}
+
+impl NewAlbumShareLink {
+  pub fn new(album_id: i32, password: Option<String>, expiration: Option<NaiveDateTime>) -> Self {
+    let uuid = nanoid!();
+
+    Self { album_id, uuid, password, expiration }
+  }
 }
 
 #[allow(non_camel_case_types)]
