@@ -1,7 +1,7 @@
 use crate::auth::login::{UserLogin, UserInfo, LoginResponse};
 use crate::auth::token::{Claims, ClaimsEncoded};
 use crate::db::{self, users::get_user_by_id};
-use crate::models::{Album, Folder, Media, NewAlbum, NewAlbumMedia, NewUser};
+use crate::models::{Album, AlbumShareLink, Folder, Media, NewAlbum, NewAlbumMedia, NewAlbumShareLink, NewUser};
 use crate::scan;
 use crate::schema::media;
 use crate::DbConn;
@@ -358,6 +358,105 @@ pub async fn delete_album(claims: Claims, conn: DbConn, album_uuid: String) -> R
 
   let deleted = db::albums::delete_album(&conn, album_id).await;
   if deleted.is_err() { return Err(Status::ImATeapot) }
+
+  Ok(Status::Ok)
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct AlbumShareLinkInsert {
+  pub expiration: Option<NaiveDateTime>,
+  pub password: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct SharedAlbumLinkResponse {
+  uuid: String,
+  expiration: Option<NaiveDateTime>,
+}
+
+/// Creates a new album share link.
+#[openapi]
+#[post("/album/<album_uuid>/share/link", data = "<album_share_link_insert>", format = "json")]
+pub async fn create_album_share_link(claims: Claims, conn: DbConn, album_uuid: String, album_share_link_insert: Json<AlbumShareLinkInsert>) -> Result<Json<SharedAlbumLinkResponse>, Status> {
+  let album_id_option = db::albums::select_album_id(&conn, album_uuid).await;
+  if album_id_option.is_none() { return Err(Status::NotFound) }
+
+  let album_id = album_id_option.unwrap();
+
+  let album = db::albums::select_album(&conn, album_id).await;
+  if album.is_none() { return Err(Status::NotFound) }
+
+  if album.unwrap().owner_id != claims.user_id { return Err(Status::Forbidden) }
+
+  let album_share_link_insert_inner = album_share_link_insert.into_inner();
+  let album_share_link = NewAlbumShareLink::new(album_id, album_share_link_insert_inner.password, album_share_link_insert_inner.expiration);
+
+  // It would be better to return result and have different responses for each error kind.
+  // But it looks like that Diesel uses one error kind for multiple different errors and changes only the message.
+  let changed_rows = db::albums::insert_album_share_link(&conn, album_share_link.clone()).await;
+  if changed_rows.is_err() { return Err(Status::InternalServerError) }
+  if changed_rows.unwrap() == 0 { return Err(Status::InternalServerError) }
+
+  Ok(
+    Json(
+      SharedAlbumLinkResponse {
+        uuid: album_share_link.uuid,
+        expiration: album_share_link.expiration
+      }
+    )
+  )
+}
+
+impl From<&AlbumShareLink> for SharedAlbumLinkResponse {
+  fn from(album_share_link: &AlbumShareLink) -> Self {
+    Self { uuid: album_share_link.uuid.clone(), expiration: album_share_link.expiration }
+  }
+}
+
+/// Gets a list of album share links.
+#[openapi]
+#[get("/album/<album_uuid>/share/link")]
+pub async fn get_album_share_links(claims: Claims, conn: DbConn, album_uuid: String) -> Result<Json<Vec<SharedAlbumLinkResponse>>, Status> {
+  let album_id_option = db::albums::select_album_id(&conn, album_uuid).await;
+  if album_id_option.is_none() {
+    return Err(Status::NotFound);
+  }
+
+  let album_id = album_id_option.unwrap();
+
+  let links = db::albums::select_album_share_links(&conn, album_id).await;
+  if links.is_err() { return Err(Status::InternalServerError) }
+
+  let result = links.unwrap().iter()
+    .map(SharedAlbumLinkResponse::from)
+    .collect::<Vec<SharedAlbumLinkResponse>>();
+
+  Ok(Json(result))
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct AlbumShareLinkUuid {
+  uuid: String,
+}
+
+/// Deletes an album share link.
+#[openapi]
+#[delete("/album/<album_uuid>/share/link", data = "<album_share_link_uuid>", format = "json")]
+pub async fn delete_album_share_link(claims: Claims, conn: DbConn, album_uuid: String, album_share_link_uuid: Json<AlbumShareLinkUuid>) -> Result<Status, Status> {
+  let album_id = db::albums::select_album_id(&conn, album_uuid).await;
+  if album_id.is_none() { return Err(Status::NotFound) }
+
+  let album = db::albums::select_album(&conn, album_id.unwrap()).await;
+  if album.is_none() { return Err(Status::NotFound) }
+
+  if album.unwrap().owner_id != claims.user_id { return Err(Status::Forbidden) }
+
+  let deleted = db::albums::delete_album_share_link(&conn, album_share_link_uuid.into_inner().uuid).await;
+  if deleted.is_err() { return Err(Status::InternalServerError) }
+
+  if deleted.unwrap() == 0 {
+    return Ok(Status::NoContent);
+  }
 
   Ok(Status::Ok)
 }

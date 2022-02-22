@@ -1,6 +1,6 @@
-use crate::models::{Album, Media, NewAlbum, NewAlbumMedia};
-use crate::routes::{AlbumInsertData, AlbumUpdateData};
-use crate::schema::{album, album_media, media};
+use crate::models::{Album, AlbumShareLink, Media, NewAlbum, NewAlbumMedia, NewAlbumShareLink};
+use crate::routes::{AlbumInsertData, AlbumShareLinkInsert, AlbumUpdateData};
+use crate::schema::{album, album_media, album_share_link, media};
 use crate::DbConn;
 use diesel::BoolExpressionMethods;
 use diesel::ExpressionMethods;
@@ -152,5 +152,33 @@ pub async fn get_album_media(conn: &DbConn, album_id: i32) -> Result<Vec<Media>,
           .filter(album_media::album_id.eq(album_id))
       ))
       .get_results::<Media>(c)
+  }).await
+}
+
+pub async fn select_album_share_links(conn: &DbConn, album_id: i32) -> Result<Vec<AlbumShareLink>, diesel::result::Error> {
+  conn.run(move |c| {
+    album_share_link::table
+      .select(album_share_link::table::all_columns())
+      .filter(album_share_link::dsl::album_id.eq(album_id))
+      .get_results::<AlbumShareLink>(c)
+  }).await
+}
+
+pub async fn insert_album_share_link(conn: &DbConn, album_share_link: NewAlbumShareLink) -> Result<usize, diesel::result::Error> {
+  conn.run(move |c| {
+    diesel::insert_into(album_share_link::table)
+      .values(album_share_link)
+      .execute(c)
+  }).await
+}
+
+/// Removes album share link.
+pub async fn delete_album_share_link(conn: &DbConn, album_share_link_uuid: String) -> Result<usize, diesel::result::Error> {
+  conn.run(move |c| {
+    diesel::delete(
+      album_share_link::table
+        .filter(album_share_link::uuid.eq(album_share_link_uuid))
+    )
+      .execute(c)
   }).await
 }
