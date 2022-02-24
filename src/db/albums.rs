@@ -164,6 +164,16 @@ pub async fn select_album_share_links(conn: &DbConn, album_id: i32) -> Result<Ve
   }).await
 }
 
+pub async fn select_album_share_link_by_uuid(conn: &DbConn, album_share_link_uuid: String) -> Result<Option<AlbumShareLink>, diesel::result::Error> {
+  conn.run(move |c| {
+    album_share_link::table
+      .select(album_share_link::table::all_columns())
+      .filter(album_share_link::dsl::uuid.eq(album_share_link_uuid))
+      .first::<AlbumShareLink>(c)
+      .optional()
+  }).await
+}
+
 pub async fn insert_album_share_link(conn: &DbConn, album_share_link: NewAlbumShareLink) -> Result<usize, diesel::result::Error> {
   conn.run(move |c| {
     diesel::insert_into(album_share_link::table)

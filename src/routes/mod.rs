@@ -424,6 +424,11 @@ pub async fn get_album_share_links(claims: Claims, conn: DbConn, album_uuid: Str
 
   let album_id = album_id_option.unwrap();
 
+  let album = db::albums::select_album(&conn, album_id).await;
+  if album.is_none() { return Err(Status::NotFound) }
+
+  if album.unwrap().owner_id != claims.user_id { return Err(Status::Forbidden) }
+
   let links = db::albums::select_album_share_links(&conn, album_id).await;
   if links.is_err() { return Err(Status::InternalServerError) }
 
@@ -434,24 +439,24 @@ pub async fn get_album_share_links(claims: Claims, conn: DbConn, album_uuid: Str
   Ok(Json(result))
 }
 
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct AlbumShareLinkUuid {
-  uuid: String,
 }
 
 /// Deletes an album share link.
 #[openapi]
-#[delete("/album/<album_uuid>/share/link", data = "<album_share_link_uuid>", format = "json")]
-pub async fn delete_album_share_link(claims: Claims, conn: DbConn, album_uuid: String, album_share_link_uuid: Json<AlbumShareLinkUuid>) -> Result<Status, Status> {
-  let album_id = db::albums::select_album_id(&conn, album_uuid).await;
-  if album_id.is_none() { return Err(Status::NotFound) }
+#[delete("/album/share/link/<album_share_link_uuid>")]
+pub async fn delete_album_share_link(claims: Claims, conn: DbConn, album_share_link_uuid: String) -> Result<Status, Status> {
+  let album_share_link_result = db::albums::select_album_share_link_by_uuid(&conn, album_share_link_uuid.clone()).await;
+  if album_share_link_result.is_err() { return Err(Status::InternalServerError) }
 
-  let album = db::albums::select_album(&conn, album_id.unwrap()).await;
+  let album_share_link = album_share_link_result.unwrap();
+  if album_share_link.is_none() { return Err(Status::NotFound) }
+
+  let album = db::albums::select_album(&conn, album_share_link.unwrap().album_id).await;
   if album.is_none() { return Err(Status::NotFound) }
 
   if album.unwrap().owner_id != claims.user_id { return Err(Status::Forbidden) }
 
-  let deleted = db::albums::delete_album_share_link(&conn, album_share_link_uuid.into_inner().uuid).await;
+  let deleted = db::albums::delete_album_share_link(&conn, album_share_link_uuid).await;
   if deleted.is_err() { return Err(Status::InternalServerError) }
 
   if deleted.unwrap() == 0 {
