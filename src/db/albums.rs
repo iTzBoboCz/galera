@@ -182,6 +182,17 @@ pub async fn insert_album_share_link(conn: &DbConn, album_share_link: NewAlbumSh
   }).await
 }
 
+/// Updates album share link.
+pub async fn update_album_share_link(conn: &DbConn, album_share_link_id: i32, album_share_link_insert: AlbumShareLinkInsert) -> Result<usize, diesel::result::Error> {
+  conn.run(move |c| {
+    diesel::update(album_share_link::table.filter(album_share_link::id.eq(album_share_link_id)))
+      .set(
+        (album_share_link::dsl::expiration.eq(album_share_link_insert.expiration),
+        album_share_link::dsl::password.eq(album_share_link_insert.password)))
+      .execute(c)
+  }).await
+}
+
 /// Removes album share link.
 pub async fn delete_album_share_link(conn: &DbConn, album_share_link_uuid: String) -> Result<usize, diesel::result::Error> {
   conn.run(move |c| {

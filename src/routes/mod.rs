@@ -5,7 +5,7 @@ use crate::models::{Album, AlbumShareLink, Folder, Media, NewAlbum, NewAlbumMedi
 use crate::scan;
 use crate::schema::media;
 use crate::DbConn;
-use chrono::NaiveDateTime;
+use chrono::{NaiveDateTime, Utc};
 use diesel::ExpressionMethods;
 use diesel::OptionalExtension;
 use diesel::QueryDsl;
@@ -439,6 +439,72 @@ pub async fn get_album_share_links(claims: Claims, conn: DbConn, album_uuid: Str
   Ok(Json(result))
 }
 
+#[derive(Serialize, JsonSchema)]
+pub struct AlbumShareLinkBasic {
+  pub album_uuid: String,
+  pub is_password_protected: bool,
+  pub is_expired: bool
+}
+
+impl AlbumShareLinkBasic {
+  pub fn new(album_share_link: AlbumShareLink, album_uuid: String) -> Self {
+    let current_time = NaiveDateTime::from_timestamp(Utc::now().timestamp(), 0);
+
+    Self {
+      album_uuid,
+      is_expired: album_share_link.expiration.is_some() && album_share_link.expiration.unwrap() < current_time,
+      is_password_protected: album_share_link.password.is_some()
+     }
+  }
+}
+
+/// Gets basic information about album share link.
+#[openapi]
+#[get("/album/share/link/<album_share_link_uuid>")]
+pub async fn get_album_share_link(conn: DbConn, album_share_link_uuid: String) -> Result<Json<AlbumShareLinkBasic>, Status> {
+  let album_share_link_result = db::albums::select_album_share_link_by_uuid(&conn, album_share_link_uuid).await;
+  if album_share_link_result.is_err() { return Err(Status::InternalServerError) }
+
+  let album_share_link_option = album_share_link_result.unwrap();
+  if album_share_link_option.is_none() { return Err(Status::NotFound) }
+
+  let album_share_link = album_share_link_option.unwrap();
+
+  let album = db::albums::select_album(&conn, album_share_link.album_id).await;
+  if album.is_none() { return Err(Status::InternalServerError)  }
+
+  Ok(
+    Json(
+      AlbumShareLinkBasic::new(album_share_link, album.unwrap().link)
+    )
+  )
+}
+
+/// Updates already existing album share link.
+#[openapi]
+#[put("/album/share/link/<album_share_link_uuid>", data = "<album_share_link_insert>", format = "json")]
+pub async fn update_album_share_link(claims: Claims, conn: DbConn, album_share_link_uuid: String, album_share_link_insert: Json<AlbumShareLinkInsert>) -> Result<Status, Status> {
+  let album_share_link_result = db::albums::select_album_share_link_by_uuid(&conn, album_share_link_uuid).await;
+  if album_share_link_result.is_err() { return Err(Status::InternalServerError) }
+
+  let album_share_link_option = album_share_link_result.unwrap();
+  if album_share_link_option.is_none() { return Err(Status::NotFound) }
+
+  let album_share_link = album_share_link_option.unwrap();
+
+  let album = db::albums::select_album(&conn, album_share_link.album_id).await;
+  if album.is_none() { return Err(Status::NotFound) }
+
+  if album.unwrap().owner_id != claims.user_id { return Err(Status::Forbidden) }
+
+  let changed_rows = db::albums::update_album_share_link(&conn, album_share_link.id, album_share_link_insert.into_inner()).await;
+  if changed_rows.is_err() { return Err(Status::InternalServerError) }
+
+  if changed_rows.unwrap() == 0 {
+    return Ok(Status::NoContent);
+  }
+
+  Ok(Status::Ok)
 }
 
 /// Deletes an album share link.

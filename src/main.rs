@@ -87,7 +87,10 @@ fn rocket() -> _ {
         routes::system_info_public,
         routes::media_update_description,
         routes::media_delete_description,
+        routes::create_album_share_link,
         routes::get_album_share_links,
+        routes::get_album_share_link,
+        routes::update_album_share_link,
         routes::delete_album_share_link
       ],
     )
