@@ -272,25 +272,46 @@ pub struct AlbumUpdateData {
   pub description: Option<String>,
 }
 
+// TODO: rewrite later and use forwarding (ranks)
+// problem seems to be in okapi as it overwrites the route when there are multiple ranks
+// while the Request guards are wrapped in Option, there are no error codes from that Request guards
 /// Gets a list of media in an album
 #[openapi]
 #[get("/album/<album_uuid>/media")]
-pub async fn get_album_structure(claims: Claims, conn: DbConn, album_uuid: String) -> Result<Json<Vec<MediaResponse>>, Status> {
+pub async fn get_album_structure(shared_album_link_security: Option<SharedAlbumLinkSecurity>, claims_option: Option<Claims>, conn: DbConn, album_uuid: String) -> Result<Json<Vec<MediaResponse>>, Status> {
   let album_id_option = db::albums::select_album_id(&conn, album_uuid).await;
   if album_id_option.is_none() {
     return Err(Status::NotFound);
   }
 
-  let album_id = album_id_option.unwrap();
-
-  let accessible = db::albums::user_has_album_access(&conn, claims.user_id, album_id).await;
-  if accessible.is_err() { return Err(Status::InternalServerError) }
-
-  if !accessible.unwrap() {
-    return Err(Status::Forbidden);
+  let album_option = db::albums::select_album(&conn, album_id_option.unwrap()).await;
+  if album_option.is_none() {
+    return Err(Status::NotFound);
   }
 
-  let structure = db::albums::get_album_media(&conn, album_id).await;
+  let album = album_option.unwrap();
+
+  if claims_option.is_some() {
+    if album.owner_id != claims_option.unwrap().user_id {
+      return Err(Status::Unauthorized);
+    }
+
+    // let accessible = db::albums::user_has_album_access(&conn, claims.user_id, album_id).await;
+    // if accessible.is_err() { return Err(Status::InternalServerError) }
+
+    // if !accessible.unwrap() {
+    //   return Err(Status::Forbidden);
+    // }
+
+    // TODO: check if non-owner user has permission to access the album (preparation for shared albums)
+
+  } else if shared_album_link_security.is_some() {
+    // TODO: maybe check more things
+  } else {
+    return Err(Status::Unauthorized);
+  }
+
+  let structure = db::albums::get_album_media(&conn, album.id).await;
 
   if structure.is_err() { return Err(Status::InternalServerError) }
 
@@ -549,10 +570,13 @@ pub async fn scan_media(claims: Claims, conn: DbConn) -> &'static str {
   "true"
 }
 
+// TODO: rewrite later and use forwarding (ranks)
+// problem seems to be in okapi as it overwrites the route when there are multiple ranks
+// while the Request guards are wrapped in Option, there are no error codes from that Request guards
 /// Returns a media
 #[openapi]
 #[get("/media/<media_uuid>")]
-pub async fn get_media_by_uuid(claims: Claims, conn: DbConn, media_uuid: String) -> Option<NamedFile> {
+pub async fn get_media_by_uuid(shared_album_link_security: Option<SharedAlbumLinkSecurity>, claims_option: Option<Claims>, conn: DbConn, media_uuid: String) -> Option<NamedFile> {
   let media: Media = conn.run(|c| {
     media::table
       .select(media::table::all_columns())
@@ -562,6 +586,19 @@ pub async fn get_media_by_uuid(claims: Claims, conn: DbConn, media_uuid: String)
       .unwrap()
   }).await?;
 
+  if claims_option.is_some() {
+    if media.owner_id != claims_option.unwrap().user_id {
+      return None;
+    }
+
+    // TODO: check if non-owner user has permission to access the album (preparation for shared albums)
+
+  } else if shared_album_link_security.is_some() {
+    // TODO: maybe check more things
+  } else {
+    return None;
+  }
+
   let xdg_data = "gallery";
 
   let mut folders: Vec<Folder> = vec!();
@@ -569,7 +606,7 @@ pub async fn get_media_by_uuid(claims: Claims, conn: DbConn, media_uuid: String)
   let current_folder = db::folders::select_folder(&conn, media.folder_id).await?;
   folders.push(current_folder.clone());
 
-  scan::select_parent_folder_recursive(&conn, current_folder, claims.user_id, &mut folders);
+  scan::select_parent_folder_recursive(&conn, current_folder, media.owner_id, &mut folders);
 
   let mut path = format!("{}/{}/", xdg_data, db::users::get_user_username(&conn, media.owner_id).await?);
 
