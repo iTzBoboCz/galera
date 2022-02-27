@@ -1,4 +1,5 @@
 use crate::auth::login::{UserLogin, UserInfo, LoginResponse};
+use crate::auth::shared_album_link::{SharedAlbumLinkSecurity, hash_password};
 use crate::auth::token::{Claims, ClaimsEncoded};
 use crate::db::{self, users::get_user_by_id};
 use crate::models::{Album, AlbumShareLink, Folder, Media, NewAlbum, NewAlbumMedia, NewAlbumShareLink, NewUser};
@@ -389,6 +390,25 @@ pub struct AlbumShareLinkInsert {
   pub password: Option<String>,
 }
 
+impl AlbumShareLinkInsert {
+  // Normalizes passwords and hashes them if they are not None
+  pub fn normalize_and_hash_password(self) -> Self {
+    if self.password.is_none() { return self }
+
+    let password = self.password.unwrap();
+
+    let hashed_password = match password.len() {
+      0 => None,
+      _ => Some(hash_password(password))
+    };
+
+    Self {
+      expiration: self.expiration,
+      password: hashed_password,
+    }
+  }
+}
+
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct SharedAlbumLinkResponse {
   uuid: String,
@@ -409,13 +429,15 @@ pub async fn create_album_share_link(claims: Claims, conn: DbConn, album_uuid: S
 
   if album.unwrap().owner_id != claims.user_id { return Err(Status::Forbidden) }
 
-  let album_share_link_insert_inner = match album_share_link_insert {
+  let mut album_share_link_insert_inner = match album_share_link_insert {
     Some(album_share_link) => album_share_link.into_inner(),
     None => AlbumShareLinkInsert {
       expiration: None,
       password: None
     }
   };
+
+  album_share_link_insert_inner = album_share_link_insert_inner.normalize_and_hash_password();
 
   let album_share_link = NewAlbumShareLink::new(album_id, album_share_link_insert_inner.password, album_share_link_insert_inner.expiration);
 
@@ -525,7 +547,7 @@ pub async fn update_album_share_link(claims: Claims, conn: DbConn, album_share_l
 
   if album.unwrap().owner_id != claims.user_id { return Err(Status::Forbidden) }
 
-  let changed_rows = db::albums::update_album_share_link(&conn, album_share_link.id, album_share_link_insert.into_inner()).await;
+  let changed_rows = db::albums::update_album_share_link(&conn, album_share_link.id, album_share_link_insert.into_inner().normalize_and_hash_password()).await;
   if changed_rows.is_err() { return Err(Status::InternalServerError) }
 
   if changed_rows.unwrap() == 0 {
