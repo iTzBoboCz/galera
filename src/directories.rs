@@ -22,6 +22,12 @@ impl Directories {
     &self.config
   }
 
+  pub fn gallery(&self) -> Option<PathBuf> {
+    let path = &self.data.join("gallery");
+
+    Directories::check(path)
+  }
+
   pub fn new() -> Option<Directories> {
     let dirs_option = Directories::get_dirs();
     if dirs_option.is_none() {

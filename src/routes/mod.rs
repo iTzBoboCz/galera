@@ -2,6 +2,7 @@ use crate::auth::login::{UserLogin, UserInfo, LoginResponse};
 use crate::auth::shared_album_link::{SharedAlbumLinkSecurity, hash_password};
 use crate::auth::token::{Claims, ClaimsEncoded};
 use crate::db::{self, users::get_user_by_id};
+use crate::directories::Directories;
 use crate::models::{Album, AlbumShareLink, Folder, Media, NewAlbum, NewAlbumMedia, NewAlbumShareLink, NewUser};
 use crate::scan;
 use crate::schema::media;
@@ -587,13 +588,17 @@ pub async fn delete_album_share_link(claims: Claims, conn: DbConn, album_share_l
 #[openapi]
 #[get("/scan_media")]
 pub async fn scan_media(claims: Claims, conn: DbConn) -> &'static str {
-  let xdg_data = "gallery";
+  let directories = Directories::new();
+  if directories.is_none() { return "false"; }
+
+  let xdg_data = directories.unwrap().gallery().to_owned();
+  if xdg_data.is_none() { return "false"; }
 
   // let now_future = Delay::new(Duration::from_secs(10));
 
   // this thread will run until scanning is complete
   // thread::spawn(|conn, xdg_data, user_id| async {
-  scan::scan_root(&conn, xdg_data, claims.user_id).await;
+  scan::scan_root(&conn, xdg_data.unwrap().to_str().unwrap(), claims.user_id).await;
   // });
 
   "true"
@@ -628,7 +633,11 @@ pub async fn get_media_by_uuid(shared_album_link_security: Option<SharedAlbumLin
     return None;
   }
 
-  let xdg_data = "gallery";
+  let directories = Directories::new();
+  if directories.is_none() { return None; }
+
+  let xdg_data = directories.unwrap().gallery().to_owned();
+  if xdg_data.is_none() { return None; }
 
   let mut folders: Vec<Folder> = vec!();
 
@@ -637,7 +646,7 @@ pub async fn get_media_by_uuid(shared_album_link_security: Option<SharedAlbumLin
 
   scan::select_parent_folder_recursive(&conn, current_folder, media.owner_id, &mut folders);
 
-  let mut path = format!("{}/{}/", xdg_data, db::users::get_user_username(&conn, media.owner_id).await?);
+  let mut path = format!("{}/{}/", xdg_data.unwrap().to_str().unwrap(), db::users::get_user_username(&conn, media.owner_id).await?);
 
   if !folders.is_empty() {
     for folder in folders.iter().rev() {
