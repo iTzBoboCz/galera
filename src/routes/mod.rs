@@ -398,7 +398,7 @@ pub struct SharedAlbumLinkResponse {
 /// Creates a new album share link.
 #[openapi]
 #[post("/album/<album_uuid>/share/link", data = "<album_share_link_insert>", format = "json")]
-pub async fn create_album_share_link(claims: Claims, conn: DbConn, album_uuid: String, album_share_link_insert: Json<AlbumShareLinkInsert>) -> Result<Json<SharedAlbumLinkResponse>, Status> {
+pub async fn create_album_share_link(claims: Claims, conn: DbConn, album_uuid: String, album_share_link_insert: Option<Json<AlbumShareLinkInsert>>) -> Result<Json<SharedAlbumLinkResponse>, Status> {
   let album_id_option = db::albums::select_album_id(&conn, album_uuid).await;
   if album_id_option.is_none() { return Err(Status::NotFound) }
 
@@ -409,7 +409,14 @@ pub async fn create_album_share_link(claims: Claims, conn: DbConn, album_uuid: S
 
   if album.unwrap().owner_id != claims.user_id { return Err(Status::Forbidden) }
 
-  let album_share_link_insert_inner = album_share_link_insert.into_inner();
+  let album_share_link_insert_inner = match album_share_link_insert {
+    Some(album_share_link) => album_share_link.into_inner(),
+    None => AlbumShareLinkInsert {
+      expiration: None,
+      password: None
+    }
+  };
+
   let album_share_link = NewAlbumShareLink::new(album_id, album_share_link_insert_inner.password, album_share_link_insert_inner.expiration);
 
   // It would be better to return result and have different responses for each error kind.
