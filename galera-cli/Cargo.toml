@@ -8,4 +8,4 @@ edition = "2018"
 
 [dependencies]
 galera = { path = "../" }
-clap = "=3.0.0-beta.2"
+clap = "=3.1.5"
