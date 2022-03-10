@@ -4,5 +4,5 @@ CREATE TABLE `album_share_link` (
   `uuid` VARCHAR(21) NOT NULL UNIQUE,
   `password` VARCHAR(128),
   `expiration` DATETIME,
-  CONSTRAINT `album_share_link_fk0` FOREIGN KEY (`album_id`) REFERENCES `album`(`id`)
+  CONSTRAINT `album_share_link_fk0` FOREIGN KEY (`album_id`) REFERENCES `album`(`id`) ON DELETE CASCADE
 );
