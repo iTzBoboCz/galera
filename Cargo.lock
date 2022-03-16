@@ -788,6 +788,7 @@ dependencies = [
  "sha2",
  "sys-info",
  "uuid",
+ "walkdir",
 ]
 
 [[package]]

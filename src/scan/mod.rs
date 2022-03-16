@@ -52,58 +52,56 @@ pub fn is_media_supported(pathbuf: &Path) -> bool {
   false
 }
 
-/// Scans folders recursively
-pub fn scan_recursively(path: PathBuf, array: &mut Vec<PathBuf>) -> bool {
-  let mut state = false;
+pub struct Scan {
+  user_id: i32,
+  username: String,
+  directory: PathBuf
+}
 
-  // skip empty folders
-  if path.read_dir().map(|mut i| i.next().is_none()).unwrap_or(false) { return state; }
+impl Scan {
+  pub async fn new(conn: &DbConn, user_id: i32, directory: PathBuf) -> Option<Self> {
+    let username = db::users::get_user_username(conn, user_id).await?;
 
-  let folders = fs::read_dir(path.clone()).unwrap()
-    .into_iter()
-    .filter(|r| r.is_ok()) // Get rid of Err variants for Result<DirEntry>
-    .map(|r| r.unwrap().path()) // This is safe, since we only have the Ok variants
-    .filter(|r| r.is_dir())
-    .collect::<Vec<PathBuf>>();
+    Some(Self {
+      user_id,
+      username,
+      directory
+    })
+  }
 
-  for folder in folders.clone() {
-    let found = scan_recursively(folder, array);
-    if !state {
-      state = found;
+  /// Outputs a list of populated folders.
+  // TODO: find out which is better: strip -> sort vs sort -> strip
+  pub fn get_folders(&self) -> Vec<PathBuf> {
+    let mut dirs = vec![];
+
+    for entry in walkdir::WalkDir::new(PathBuf::from(&self.directory).join(&self.username)) {
+      if entry.is_ok() {
+        let path = entry.unwrap().into_path();
+        if path.is_file() {
+          if let Some(parent) = path.parent() {
+            let strip = PathBuf::from(parent.strip_prefix(&self.directory).unwrap());
+            dirs.push(strip);
+          }
+        }
+      }
     }
-  }
 
-  if state {
-    return true;
-  }
+    dirs.sort();
+    dirs.dedup();
 
-  let files = fs::read_dir(path.clone()).unwrap()
-    .into_iter()
-    .filter(|r| r.is_ok()) // Get rid of Err variants for Result<DirEntry>
-    .map(|r| r.unwrap().path()) // This is safe, since we only have the Ok variants
-    .filter(|r| r.is_file())
-    .filter(|r| is_media_supported(r))
-    .count();
-
-  if files > 0 {
-    array.push(path);
-    true
-  } else {
-    false
+    dirs
   }
 }
 
 /// scans folder of a given user
-pub async fn scan_root(conn: &DbConn, xdg_data: &str, user_id: i32) {
+pub async fn scan_root(conn: &DbConn, xdg_data: PathBuf, user_id: i32) {
   // root directory
   let username_option = db::users::get_user_username(conn, user_id).await;
   if username_option.is_none() { return; }
 
   let username = username_option.unwrap();
 
-  let current_dir = format!("{}/{}/", xdg_data, username);
-
-  let mut found_folders: Vec<PathBuf> = Vec::new();
+  let current_dir = xdg_data.join(username.clone());
 
   info!("Scanning files and folders for user {} started.", username);
 
@@ -116,41 +114,24 @@ pub async fn scan_root(conn: &DbConn, xdg_data: &str, user_id: i32) {
     }
   }
 
-  let folders = fs::read_dir(current_dir.clone()).unwrap()
-    .into_iter()
-    .filter(|r| r.is_ok()) // Get rid of Err variants for Result<DirEntry>
-    .count();
+  let scan = Scan::new(&conn, user_id, xdg_data.clone()).await;
+  if scan.is_none() { return }
 
-  if folders > 0 {
-    scan_recursively(PathBuf::from(current_dir), &mut found_folders);
-  }
+  let found_folders = scan.unwrap().get_folders();
 
-  add_folders_to_db(conn, found_folders, xdg_data, user_id).await;
+  add_folders_to_db(conn, found_folders, user_id).await;
 
-  scan_folders_for_media(conn, xdg_data, user_id).await;
+  scan_folders_for_media(conn, xdg_data.to_str().unwrap(), user_id).await;
 
   info!("Scanning is done.");
 }
 
 // folders when using NTFS can be max. 260 characters (we currently support max. 255 - Linux maximum and max. VARCHAR size) TODO: warn user when scanning folder that is longer and skip it
-pub async fn add_folders_to_db(conn: &DbConn, paths: Vec<PathBuf>, xdg_data: &str, user_id: i32) {
-  // let username_option: Option<String> = conn.run(move |c| async {
-  //   return get_user_username(c, user_id).await;
-  // }).await;
-
-  let username_option = db::users::get_user_username(conn, user_id).await;
-  if username_option.is_none() { return; }
-
-  let username = username_option.unwrap();
-
-  let root = format!("{}/{}/", xdg_data, username);
-
-  for path in paths {
+pub async fn add_folders_to_db(conn: &DbConn, relative_paths: Vec<PathBuf>, user_id: i32) {
+  for path in relative_paths {
     debug!("scanning path: {:?}", path);
 
-    let path_string = path.display().to_string();
-    let path_stripped = path_string.strip_prefix(&root).unwrap().to_string().to_owned();
-    let string_split = path_stripped.split('/').into_iter().map(|f| f.to_owned());
+    let string_split = path.to_str().unwrap().split('/').into_iter().map(|f| f.to_owned());
 
     let mut parent: Option<i32> = None;
     for (i, s) in string_split.enumerate() {
@@ -187,22 +168,22 @@ pub async fn scan_folders_for_media(conn: &DbConn, xdg_data: &str, user_id: i32)
 
   let username = username_option.unwrap();
 
-  let root_folders = db::folders::select_root_folders(conn, user_id).await;
+  let root_folder_result = db::folders::select_root_folder(conn, user_id).await;
+  if root_folder_result.is_err() { return }
 
-  for root_folder in root_folders {
-    scan_select(conn, root_folder, String::new(), xdg_data, user_id, username.clone());
-  }
+  let root_folder_option = root_folder_result.unwrap();
+  if root_folder_option.is_none() { return }
 
-  // scan_folder_media - gallery/username
+  scan_select(conn, root_folder_option.unwrap(), String::new(), xdg_data, user_id, username.clone());
 }
 
 pub fn scan_select(conn: &DbConn, parent_folder: Folder, mut path: String, xdg_data: &str, user_id: i32, username: String) {
   if path.is_empty() {
-    path = format!("{}/{}/{}/", xdg_data, username, parent_folder.name);
+    path = format!("{}/{}/", xdg_data, parent_folder.name);
   }
   let folders: Vec<Folder> = executor::block_on(db::folders::select_subfolders(conn, parent_folder.clone(), user_id));
 
-  scan_folder_media(conn, parent_folder, path.clone(), xdg_data, user_id, username.clone());
+  scan_folder_media(conn, parent_folder, path.clone(), user_id);
 
   for folder in folders {
     scan_select(conn, folder.clone(), format!("{}/{}/", path.clone(), folder.name), xdg_data, user_id, username.clone());
@@ -210,7 +191,7 @@ pub fn scan_select(conn: &DbConn, parent_folder: Folder, mut path: String, xdg_d
 }
 
 /// Scans user's folder for media
-pub fn scan_folder_media(conn: &DbConn, parent_folder: Folder, path: String, xdg_data: &str, user_id: i32, username: String) {
+pub fn scan_folder_media(conn: &DbConn, parent_folder: Folder, path: String, user_id: i32) {
   // get files in a folder
   let media_scanned_option = folder_get_media(PathBuf::from(path.clone()));
   if media_scanned_option.is_none() { return; }
@@ -218,8 +199,6 @@ pub fn scan_folder_media(conn: &DbConn, parent_folder: Folder, path: String, xdg
   let media_scanned_vec = media_scanned_option.unwrap();
 
   if media_scanned_vec.is_empty() { return; }
-
-  let prefix = format!("{}/{}/", xdg_data, username);
 
   for media_scanned in media_scanned_vec {
 

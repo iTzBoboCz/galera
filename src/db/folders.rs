@@ -41,15 +41,13 @@ pub async fn select_child_folder_id(conn: &DbConn, name: String, parent: Option<
   }
 }
 
-pub async fn select_root_folders(conn: &DbConn, user_id: i32) -> Vec<Folder> {
+pub async fn select_root_folder(conn: &DbConn, user_id: i32) -> Result<Option<Folder>, diesel::result::Error> {
   conn.run(move |c| {
     folder::table
       .select(folder::table::all_columns())
       .filter(folder::dsl::parent.is_null().and(folder::owner_id.eq(user_id)))
-      .get_results::<Folder>(c)
+      .first::<Folder>(c)
       .optional()
-      .unwrap()
-      .unwrap()
   }).await
 }
 

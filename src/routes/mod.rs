@@ -598,7 +598,7 @@ pub async fn scan_media(claims: Claims, conn: DbConn) -> &'static str {
 
   // this thread will run until scanning is complete
   // thread::spawn(|conn, xdg_data, user_id| async {
-  scan::scan_root(&conn, xdg_data.unwrap().to_str().unwrap(), claims.user_id).await;
+  scan::scan_root(&conn, xdg_data.unwrap(), claims.user_id).await;
   // });
 
   "true"
@@ -646,14 +646,14 @@ pub async fn get_media_by_uuid(shared_album_link_security: Option<SharedAlbumLin
 
   scan::select_parent_folder_recursive(&conn, current_folder, media.owner_id, &mut folders);
 
-  let mut path = format!("{}/{}/", xdg_data.unwrap().to_str().unwrap(), db::users::get_user_username(&conn, media.owner_id).await?);
+  let mut path = xdg_data.unwrap();
 
   if !folders.is_empty() {
     for folder in folders.iter().rev() {
-      path += format!("{}/", folder.name).as_str();
+      path = path.join(folder.name.as_str());
     }
   }
-  path += &media.filename;
+  path = path.join(&media.filename);
 
   NamedFile::open(path).await.ok()
 }
