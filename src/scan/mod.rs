@@ -215,7 +215,7 @@ pub fn scan_folder_media(conn: &DbConn, parent_folder: Folder, path: String, use
 
       if image_dimensions.is_none() {
         error!("Image {:?} was skipped as its dimensions are unknown.", media_scanned);
-        return;
+        continue;
       }
 
       executor::block_on(db::media::insert_media(conn, name, parent_folder.clone(), user_id,  image_dimensions.unwrap(), None, media_scanned));
