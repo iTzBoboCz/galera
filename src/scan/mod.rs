@@ -121,7 +121,7 @@ pub async fn scan_root(conn: &DbConn, xdg_data: PathBuf, user_id: i32) {
 
   add_folders_to_db(conn, found_folders, user_id).await;
 
-  scan_folders_for_media(conn, xdg_data.to_str().unwrap(), user_id).await;
+  scan_folders_for_media(conn, xdg_data, user_id).await;
 
   info!("Scanning is done.");
 }
@@ -162,7 +162,7 @@ pub async fn add_folders_to_db(conn: &DbConn, relative_paths: Vec<PathBuf>, user
   }
 }
 
-pub async fn scan_folders_for_media(conn: &DbConn, xdg_data: &str, user_id: i32) {
+pub async fn scan_folders_for_media(conn: &DbConn, xdg_data: PathBuf, user_id: i32) {
   let username_option = db::users::get_user_username(conn, user_id).await;
   if username_option.is_none() { return; }
 
@@ -174,26 +174,28 @@ pub async fn scan_folders_for_media(conn: &DbConn, xdg_data: &str, user_id: i32)
   let root_folder_option = root_folder_result.unwrap();
   if root_folder_option.is_none() { return }
 
-  scan_select(conn, root_folder_option.unwrap(), String::new(), xdg_data, user_id, username.clone());
+  scan_select(conn, root_folder_option.unwrap(), None, xdg_data, user_id, username.clone());
 }
 
-pub fn scan_select(conn: &DbConn, parent_folder: Folder, mut path: String, xdg_data: &str, user_id: i32, username: String) {
-  if path.is_empty() {
-    path = format!("{}/{}/", xdg_data, parent_folder.name);
+pub fn scan_select(conn: &DbConn, parent_folder: Folder, mut path: Option<PathBuf>, xdg_data: PathBuf, user_id: i32, username: String) {
+  if path.is_none() {
+    path = Some(xdg_data.join(parent_folder.name.clone()));
   }
   let folders: Vec<Folder> = executor::block_on(db::folders::select_subfolders(conn, parent_folder.clone(), user_id));
 
-  scan_folder_media(conn, parent_folder, path.clone(), user_id);
+  let path_clean = path.unwrap();
+
+  scan_folder_media(conn, parent_folder, path_clean.clone(), user_id);
 
   for folder in folders {
-    scan_select(conn, folder.clone(), format!("{}/{}/", path.clone(), folder.name), xdg_data, user_id, username.clone());
+    scan_select(conn, folder.clone(), Some(path_clean.clone().join(folder.name)), xdg_data.clone(), user_id, username.clone());
   }
 }
 
 /// Scans user's folder for media
-pub fn scan_folder_media(conn: &DbConn, parent_folder: Folder, path: String, user_id: i32) {
+pub fn scan_folder_media(conn: &DbConn, parent_folder: Folder, path: PathBuf, user_id: i32) {
   // get files in a folder
-  let media_scanned_option = folder_get_media(PathBuf::from(path.clone()));
+  let media_scanned_option = folder_get_media(path);
   if media_scanned_option.is_none() { return; }
 
   let media_scanned_vec = media_scanned_option.unwrap();
@@ -201,9 +203,7 @@ pub fn scan_folder_media(conn: &DbConn, parent_folder: Folder, path: String, use
   if media_scanned_vec.is_empty() { return; }
 
   for media_scanned in media_scanned_vec {
-
-    let media_string = media_scanned.display().to_string();
-    let name = media_string.strip_prefix(&path).unwrap().to_string().to_owned();
+    let name = media_scanned.file_name().unwrap().to_str().unwrap().to_owned();
 
     let media: Option<i32> = executor::block_on(db::media::check_if_media_present(conn, name.clone(), parent_folder.clone(), user_id));
 
