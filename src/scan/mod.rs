@@ -208,13 +208,13 @@ pub fn scan_folder_media(conn: &DbConn, parent_folder: Folder, path: PathBuf, us
     let media: Option<i32> = executor::block_on(db::media::check_if_media_present(conn, name.clone(), parent_folder.clone(), user_id));
 
     if media.is_none() {
-      error!("{:?} doesnt exist in database", media_scanned);
+      debug!("{:?} doesnt exist in database", media_scanned);
 
       let image_dimensions = image::image_dimensions(media_scanned.clone())
         .ok();
 
       if image_dimensions.is_none() {
-        error!("Image {:?} was skipped as its dimensions are unknown.", media_scanned);
+        warn!("Image {:?} was skipped as its dimensions are unknown.", media_scanned);
         continue;
       }
 
