@@ -951,6 +951,7 @@ dependencies = [
  "sha2",
  "sys-info",
  "tokio",
+ "tower-http",
  "tracing",
  "tracing-subscriber",
  "uuid",
@@ -2711,6 +2712,7 @@ dependencies = [
  "tower",
  "tower-layer",
  "tower-service",
+ "tracing",
 ]
 
 [[package]]

@@ -21,6 +21,8 @@
 // use crate::directories::Directories;
 use axum::{response::Html, routing::get, Router};
 use std::net::SocketAddr;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tower_http::trace::TraceLayer;
 
 // mod media;
 // mod errors;
@@ -34,8 +36,16 @@ use std::net::SocketAddr;
 
 #[tokio::main]
 async fn main() {
+  tracing_subscriber::registry()
+    .with(tracing_subscriber::EnvFilter::new(
+        std::env::var("RUST_LOG")
+          .unwrap_or_else(|_| "example_tracing_aka_logging=debug,tower_http=debug".into()),
+    ))
+    .with(tracing_subscriber::fmt::layer())
+    .init();
+
   // build our application with a route
-  let app = Router::new().route("/", get(handler));
+  let app = Router::new().route("/", get(handler).layer(TraceLayer::new_for_http()));
 
   // run it
   let addr = SocketAddr::from(([127, 0, 0, 1], 8000));
