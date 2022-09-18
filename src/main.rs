@@ -19,6 +19,8 @@
 // use diesel_migrations::embed_migrations;
 // use crate::auth::secret::Secret;
 // use crate::directories::Directories;
+use axum::{response::Html, routing::get, Router};
+use std::net::SocketAddr;
 
 // mod media;
 // mod errors;
@@ -29,6 +31,24 @@
 // mod schema;
 // mod auth;
 // mod directories;
+
+#[tokio::main]
+async fn main() {
+  // build our application with a route
+  let app = Router::new().route("/", get(handler));
+
+  // run it
+  let addr = SocketAddr::from(([127, 0, 0, 1], 8000));
+  println!("listening on {}", addr);
+  axum::Server::bind(&addr)
+    .serve(app.into_make_service())
+    .await
+    .unwrap();
+}
+
+async fn handler() -> Html<&'static str> {
+  Html("<h1>Hello, World!</h1>")
+}
 
 // /// Connection to the database.
 // #[database("galera")]
