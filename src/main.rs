@@ -29,8 +29,8 @@ use tower_http::trace::TraceLayer;
 
 // mod media;
 // mod errors;
-// mod routes;
-// mod models;
+mod routes;
+mod models;
 mod db;
 // mod scan;
 mod schema;

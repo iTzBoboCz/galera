@@ -3,8 +3,8 @@ use chrono::{Duration, NaiveDateTime, Utc};
 use email_address::EmailAddress;
 use lazy_regex::regex_is_match;
 use nanoid::nanoid;
-use rocket_okapi::JsonSchema;
-use rocket::form::FromForm;
+// use rocket_okapi::JsonSchema;
+// use rocket::form::FromForm;
 use serde::{Serialize, Deserialize};
 use sha2::Digest;
 
@@ -19,7 +19,8 @@ pub struct User {
 }
 
 /// Struct for inserting new users.
-#[derive(Insertable, FromForm, Deserialize, JsonSchema, Clone)]
+// #[derive(FromForm, JsonSchema)]
+#[derive(Insertable, Deserialize, Clone)]
 #[table_name = "user"]
 pub struct NewUser {
   pub username: String,
@@ -116,7 +117,8 @@ impl NewFolder {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Identifiable, Queryable, Associations, Serialize, JsonSchema)]
+// #[derive(JsonSchema)]
+#[derive(Identifiable, Queryable, Associations, Serialize)]
 #[table_name = "album"]
 #[belongs_to(User, foreign_key = "owner_id")]
 pub struct Album {
@@ -131,7 +133,8 @@ pub struct Album {
 }
 
 /// Struct for inserting new albums.
-#[derive(Insertable, Deserialize, Clone, JsonSchema)]
+// #[derive(JsonSchema)]
+#[derive(Insertable, Deserialize, Clone)]
 #[table_name = "album"]
 pub struct NewAlbum {
   pub owner_id: i32,
@@ -206,7 +209,8 @@ pub struct AlbumMedia {
   pub media_id: i32
 }
 
-#[derive(Insertable, Deserialize, JsonSchema)]
+// #[derive(JsonSchema)]
+#[derive(Insertable, Deserialize)]
 #[table_name = "album_media"]
 pub struct NewAlbumMedia {
   pub album_id: i32,
