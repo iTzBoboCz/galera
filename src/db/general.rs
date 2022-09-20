@@ -12,13 +12,13 @@ use diesel::RunQueryDsl;
 ///
 /// let folder_id: Option<i32> = get_last_insert_id(&conn);
 /// ```
-pub async fn get_last_insert_id(conn: &DbConn) -> Option<i32> {
-  conn.run(|c| {
+pub async fn get_last_insert_id(conn: DbConn) -> Option<i32> {
+  conn.interact(|c| {
     no_arg_sql_function!(last_insert_id, Integer);
 
     select(last_insert_id)
       .first(c)
       .optional()
       .unwrap()
-  }).await
+  }).await.unwrap()
 }

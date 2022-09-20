@@ -29,13 +29,15 @@ use tower_http::trace::TraceLayer;
 
 // mod media;
 // mod errors;
-// mod db;
 // mod routes;
 // mod models;
+mod db;
 // mod scan;
 mod schema;
 // mod auth;
 mod directories;
+
+pub type DbConn = deadpool::managed::Object<Manager<MysqlConnection>>;
 
 async fn create_db_pool() -> Pool<Manager<MysqlConnection>> {
   let manager = Manager::<MysqlConnection>::new("mysql://root:root@localhost/galera", Runtime::Tokio1);
