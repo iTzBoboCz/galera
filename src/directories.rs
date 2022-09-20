@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::fs;
 use directories::ProjectDirs;
+use tracing::{error, info, warn};
 
 #[derive(Debug)]
 pub struct Directories {

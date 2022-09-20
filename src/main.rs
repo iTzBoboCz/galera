@@ -18,7 +18,7 @@ extern crate diesel_migrations;
 
 use diesel_migrations::embed_migrations;
 // use crate::auth::secret::Secret;
-// use crate::directories::Directories;
+use crate::directories::Directories;
 use axum::{response::{Html, IntoResponse}, routing::get, Router, http::Request, middleware::{Next, self}, extract::{MatchedPath, State}};
 use deadpool_diesel::{Pool, Runtime, Manager};
 use diesel::{MysqlConnection};
@@ -35,7 +35,7 @@ use tower_http::trace::TraceLayer;
 // mod scan;
 mod schema;
 // mod auth;
-// mod directories;
+mod directories;
 
 async fn create_db_pool() -> Pool<Manager<MysqlConnection>> {
   let manager = Manager::<MysqlConnection>::new("mysql://root:root@localhost/galera", Runtime::Tokio1);
