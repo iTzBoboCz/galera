@@ -10,16 +10,18 @@
   clippy::too_many_arguments
 )]
 
-// #[macro_use]
-// extern crate diesel;
+#[macro_use]
+extern crate diesel;
 
-// #[macro_use]
-// extern crate diesel_migrations;
+#[macro_use]
+extern crate diesel_migrations;
 
-// use diesel_migrations::embed_migrations;
+use diesel_migrations::embed_migrations;
 // use crate::auth::secret::Secret;
 // use crate::directories::Directories;
-use axum::{response::{Html, IntoResponse}, routing::get, Router, http::Request, middleware::{Next, self}, extract::MatchedPath};
+use axum::{response::{Html, IntoResponse}, routing::get, Router, http::Request, middleware::{Next, self}, extract::{MatchedPath, State}};
+use deadpool_diesel::{Pool, Runtime, Manager};
+use diesel::{MysqlConnection};
 use metrics_exporter_prometheus::{Matcher, PrometheusBuilder, PrometheusHandle};
 use std::{net::SocketAddr, time::Instant, future::ready};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -31,9 +33,18 @@ use tower_http::trace::TraceLayer;
 // mod routes;
 // mod models;
 // mod scan;
-// mod schema;
+mod schema;
 // mod auth;
 // mod directories;
+
+async fn create_db_pool() -> Pool<Manager<MysqlConnection>> {
+  let manager = Manager::<MysqlConnection>::new("mysql://root:root@localhost/galera", Runtime::Tokio1);
+
+  Pool::builder(manager)
+    .max_size(8)
+    .build()
+    .unwrap()
+}
 
 #[tokio::main]
 async fn main() {
@@ -47,8 +58,13 @@ async fn main() {
 
   let recorder_handle = setup_metrics_recorder();
 
+  let pool = create_db_pool().await;
+
+  embed_migrations!();
+  pool.get().await.unwrap().interact(|c| embedded_migrations::run(c)).await.expect("Can't connect to the database.").expect("Can't run migrations.");
+
   // build our application with a route
-  let app = Router::new()
+  let app = Router::with_state(pool)
     .route("/", get(handler))
     .route("/metrics", get(move || ready(recorder_handle.render())))
     .route_layer(middleware::from_fn(track_metrics))
@@ -166,17 +182,6 @@ async fn track_metrics<B>(req: Request<B>, next: Next<B>) -> impl IntoResponse {
 //         ..Default::default()
 //       }),
 //     )
-// }
-
-// /// Runs migrations
-// pub async fn run_migrations(rocket: Rocket<Build>) -> Rocket<Build> {
-
-//   embed_migrations!();
-
-//   let conn = DbConn::get_one(&rocket).await.expect("database connection");
-//   conn.run(|c| embedded_migrations::run(c)).await.expect("can run migrations");
-
-//   rocket
 // }
 
 // /// Checks whether the secret.key file is present and tries to create it if it isn't.\

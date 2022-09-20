@@ -9,14 +9,14 @@ license = "GPL-3.0-only"
 
 [dependencies]
 # Web server
-axum = "0.6.0-rc.1"
+axum = "0.6.0-rc.2"
 axum-extra = { version = "0.4.0-rc.1", features = ["typed-routing"] }
 
 # Database
-diesel = { version = "1.4.8", features = ["mysql", "r2d2", "chrono"] }
+deadpool = { version = "0.9.3", features = ["rt_tokio_1", "serde", "async-trait", "managed" ] }
+deadpool-diesel = { version = "0.3.1", features = ["serde","rt_tokio_1"] }
+diesel = { version = "1.4.8", features = ["mysql", "chrono"] }
 diesel_migrations = "1.4.0"
-rocket_sync_db_pools = { version = "0.1.0-rc.1", features = ["diesel_mysql_pool"] }
-r2d2 = "0.8.9"
 
 # Logging
 metrics = "0.18"
