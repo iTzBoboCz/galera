@@ -1,9 +1,9 @@
 // use crate::auth::login::{UserLogin, UserInfo, LoginResponse};
 // use crate::auth::shared_album_link::{SharedAlbumLinkSecurity, hash_password};
 // use crate::auth::token::{Claims, ClaimsEncoded};
-// use crate::db::{self, users::get_user_by_id};
 // use crate::directories::Directories;
 use crate::models::Media;
+use crate::db::{self, users::get_user_by_id};
 use crate::models::{Album, AlbumShareLink, Folder, Media, NewAlbum, NewAlbumMedia, NewAlbumShareLink, NewUser};
 use axum::extract::State;
 use axum::{Json, http::StatusCode};
