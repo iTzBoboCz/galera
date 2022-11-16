@@ -38,9 +38,10 @@ mod schema;
 // mod auth;
 mod directories;
 
+pub type ConnectionPool = Pool<Manager<MysqlConnection>>;
 pub type DbConn = deadpool::managed::Object<Manager<MysqlConnection>>;
 
-async fn create_db_pool() -> Pool<Manager<MysqlConnection>> {
+async fn create_db_pool() -> ConnectionPool {
   let manager = Manager::<MysqlConnection>::new("mysql://root:root@localhost/galera", Runtime::Tokio1);
 
   Pool::builder(manager)
@@ -70,6 +71,7 @@ async fn main() {
   let app = Router::with_state(pool)
     .route("/", get(handler))
     .route("/metrics", get(move || ready(recorder_handle.render())))
+    .typed_post(routes::create_user)
     .typed_get(routes::system_info_public)
     .route_layer(middleware::from_fn(track_metrics))
     .layer(TraceLayer::new_for_http());

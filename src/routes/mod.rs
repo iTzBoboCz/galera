@@ -3,13 +3,15 @@
 // use crate::auth::token::{Claims, ClaimsEncoded};
 // use crate::db::{self, users::get_user_by_id};
 // use crate::directories::Directories;
-// use crate::models::{Album, AlbumShareLink, Folder, NewAlbum, NewAlbumMedia, NewAlbumShareLink, NewUser};
 use crate::models::Media;
+use crate::models::{Album, AlbumShareLink, Folder, Media, NewAlbum, NewAlbumMedia, NewAlbumShareLink, NewUser};
+use axum::extract::State;
 use axum::{Json, http::StatusCode};
 use axum_extra::routing::TypedPath;
+use tracing::info;
 // use crate::scan;
 // use crate::schema::media;
-// use crate::DbConn;
+use crate::{DbConn, ConnectionPool};
 use chrono::{NaiveDateTime, Utc};
 // use diesel::ExpressionMethods;
 // use diesel::OptionalExtension;
@@ -26,21 +28,30 @@ use serde::{Deserialize, Serialize};
 //   "Hello, world!"
 // }
 
-// /// Creates a new user
-// #[openapi]
-// #[post("/user", data = "<user>", format = "json")]
-// pub async fn create_user(conn: DbConn, user: Json<NewUser>) -> Result<Status, Status> {
-//   if !user.check() { return Err(Status::UnprocessableEntity) }
+#[derive(TypedPath)]
+#[typed_path("/user")]
+pub struct UserRoute;
 
-//   if !db::users::is_user_unique(&conn, user.0.clone()).await { return Err(Status::Conflict); };
+/// Creates a new user
+pub async fn create_user(
+  _: UserRoute,
+  State(pool): State<ConnectionPool>,
+  Json(user): Json<NewUser>,
+) -> Result<StatusCode, StatusCode> {
+  if !user.check() { return Err(StatusCode::UNPROCESSABLE_ENTITY) }
 
-//   let new_user = user.into_inner().hash_password();
-//   let result = db::users::insert_user(&conn, new_user.clone()).await;
-//   if result == 0 { return Err(Status::InternalServerError) }
+  // TODO: investigate passing pool vs connection as parameter
+  if !db::users::is_user_unique(pool.get().await.unwrap(), user.clone()).await { return Err(StatusCode::CONFLICT); };
 
-//   info!("A new user was created with name {}", new_user.username);
-//   Ok(Status::Ok)
-// }
+  let new_user = user.hash_password();
+  let result = db::users::insert_user(pool.get().await.unwrap(), new_user.clone()).await;
+  if result == 0 { return Err(StatusCode::INTERNAL_SERVER_ERROR) }
+
+  info!("A new user was created with name {}", new_user.username);
+  Ok(StatusCode::OK)
+}
+
+
 
 // /// You must provide either a username or an email together with a password.
 // #[openapi]
