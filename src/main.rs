@@ -16,6 +16,7 @@ extern crate diesel;
 #[macro_use]
 extern crate diesel_migrations;
 
+use axum_extra::routing::RouterExt;
 use diesel_migrations::embed_migrations;
 // use crate::auth::secret::Secret;
 use crate::directories::Directories;
@@ -69,6 +70,7 @@ async fn main() {
   let app = Router::with_state(pool)
     .route("/", get(handler))
     .route("/metrics", get(move || ready(recorder_handle.render())))
+    .typed_get(routes::system_info_public)
     .route_layer(middleware::from_fn(track_metrics))
     .layer(TraceLayer::new_for_http());
 
