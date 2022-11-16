@@ -5,6 +5,8 @@
 // use crate::directories::Directories;
 // use crate::models::{Album, AlbumShareLink, Folder, NewAlbum, NewAlbumMedia, NewAlbumShareLink, NewUser};
 use crate::models::Media;
+use axum::{Json, http::StatusCode};
+use axum_extra::routing::TypedPath;
 // use crate::scan;
 // use crate::schema::media;
 // use crate::DbConn;
@@ -17,7 +19,6 @@ use chrono::{NaiveDateTime, Utc};
 // use rocket::{fs::NamedFile, http::Status};
 use serde::{Deserialize, Serialize};
 // use schemars::JsonSchema;
-// use rocket::serde::json::Json;
 
 // #[openapi]
 // #[get("/")]
@@ -784,29 +785,34 @@ pub struct AlbumShareLinkInsert {
 //   Ok(Status::Ok)
 // }
 
-// #[derive(Serialize, Deserialize, JsonSchema)]
-// #[serde(rename_all = "camelCase")]
-// pub struct SystemInfoPublic {
-//   operating_system: String,
-//   server_name: String,
-//   server_version: String,
-//   system_architecture: String,
-// }
+// #[derive(JsonSchema)
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemInfoPublic {
+  operating_system: String,
+  server_name: String,
+  server_version: String,
+  system_architecture: String,
+}
 
-// impl SystemInfoPublic {
-//   pub fn new() -> Self {
-//     Self {
-//       operating_system: std::env::consts::OS.to_string(),
-//       server_name: sys_info::hostname().unwrap_or(String::new()),
-//       server_version: env!("CARGO_PKG_VERSION").to_string(),
-//       system_architecture: std::env::consts::ARCH.to_string(),
-//     }
-//   }
-// }
+impl SystemInfoPublic {
+  pub fn new() -> Self {
+    Self {
+      operating_system: std::env::consts::OS.to_string(),
+      server_name: sys_info::hostname().unwrap_or(String::new()),
+      server_version: env!("CARGO_PKG_VERSION").to_string(),
+      system_architecture: std::env::consts::ARCH.to_string(),
+    }
+  }
+}
 
-// /// Returns the public system information.
-// #[openapi]
-// #[get("/system/info/public")]
-// pub async fn system_info_public() -> Json<SystemInfoPublic> {
-//   Json(SystemInfoPublic::new())
-// }
+#[derive(TypedPath)]
+#[typed_path("/system/info/public")]
+pub struct SystemInfoPublicRoute;
+
+/// Returns the public system information.
+pub async fn system_info_public(
+  _: SystemInfoPublicRoute,
+) -> Json<SystemInfoPublic> {
+  Json(SystemInfoPublic::new())
+}
