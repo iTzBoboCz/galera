@@ -68,13 +68,14 @@ async fn main() {
   pool.get().await.unwrap().interact(|c| embedded_migrations::run(c)).await.expect("Can't connect to the database.").expect("Can't run migrations.");
 
   // build our application with a route
-  let app = Router::with_state(pool)
+  let app = Router::new()
     .route("/", get(handler))
     .route("/metrics", get(move || ready(recorder_handle.render())))
     .typed_post(routes::create_user)
     .typed_get(routes::system_info_public)
     .route_layer(middleware::from_fn(track_metrics))
-    .layer(TraceLayer::new_for_http());
+    .layer(TraceLayer::new_for_http())
+    .with_state(pool);
 
   // run it
   let addr = SocketAddr::from(([127, 0, 0, 1], 8000));
