@@ -110,7 +110,7 @@ pub async fn create_user(
 //   }
 
 //   // refresh token is expired
-//   if bearer_token.is_refresh_token_expired(&conn).await { return Err(Status::Unauthorized); }
+//   if bearer_token.is_refresh_token_expired(pool.get().await.unwrap()).await { return Err(StatusCode::Unauthorized); }
 
 //   let new_token = Claims::from_existing(&bearer_token);
 

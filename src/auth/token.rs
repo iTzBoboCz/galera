@@ -111,11 +111,11 @@ impl Claims {
   }
 
   /// Checks the validity of a bearer token.
-  pub async fn is_valid(&self, conn: DbConn) -> bool {
+  pub async fn is_valid(&self, pool: ConnectionPool) -> bool {
     // expiration
     !self.is_expired()
     // valid user
-    && users::get_user_username(&conn, self.user_id).await.is_some()
+    && users::get_user_username(pool.get().await.unwrap(), self.user_id).await.is_some()
     // TODO: other checks
     // valid refresh_token
     // && db::users::(&conn, user_id,)
@@ -252,7 +252,7 @@ pub async fn auth<B>(State(pool): State<ConnectionPool>, TypedHeader(Authorizati
   let bearer_token_decoded = Claims::try_from(bearer.token());
 
   if let Ok(claims) = bearer_token_decoded {
-    if claims.is_valid(pool.get().await.unwrap()).await {
+    if claims.is_valid(pool).await {
       // insert the current user into a request extension so the handler can
       // extract it
       req.extensions_mut().insert(claims);
