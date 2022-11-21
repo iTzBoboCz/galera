@@ -35,7 +35,7 @@ mod models;
 mod db;
 // mod scan;
 mod schema;
-// mod auth;
+mod auth;
 mod directories;
 
 pub type ConnectionPool = Pool<Manager<MysqlConnection>>;
@@ -67,12 +67,23 @@ async fn main() {
   embed_migrations!();
   pool.get().await.unwrap().interact(|c| embedded_migrations::run(c)).await.expect("Can't connect to the database.").expect("Can't run migrations.");
 
-  // build our application with a route
-  let app = Router::new()
+
+  let protected = Router::new()
+    .route_layer(middleware::from_fn_with_state(pool.clone(), auth::token::auth));
+
+  let unprotected = Router::new()
     .route("/", get(handler))
     .route("/metrics", get(move || ready(recorder_handle.render())))
     .typed_post(routes::create_user)
-    .typed_get(routes::system_info_public)
+    .typed_get(routes::system_info_public);
+
+  let mixed_auth = Router::new()
+    .route_layer(middleware::from_fn_with_state(pool.clone(), auth::token::mixed_auth));
+
+  // build our application with a route
+  let app = protected
+    .merge(unprotected)
+    .merge(mixed_auth)
     .route_layer(middleware::from_fn(track_metrics))
     .layer(TraceLayer::new_for_http())
     .with_state(pool);
