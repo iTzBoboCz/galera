@@ -69,6 +69,11 @@ async fn main() {
 
 
   let protected = Router::new()
+    .typed_post(routes::create_album)
+    .typed_get(routes::album_add_media)
+    .typed_get(routes::get_album_list)
+    .typed_put(routes::update_album)
+    .typed_delete(routes::delete_album)
     .route_layer(middleware::from_fn_with_state(pool.clone(), auth::token::auth));
 
   let unprotected = Router::new()
@@ -78,6 +83,7 @@ async fn main() {
     .typed_get(routes::system_info_public);
 
   let mixed_auth = Router::new()
+    .typed_get(routes::get_album_structure)
     .route_layer(middleware::from_fn_with_state(pool.clone(), auth::token::mixed_auth));
 
   // build our application with a route

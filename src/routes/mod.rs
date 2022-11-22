@@ -151,17 +151,23 @@ impl From<&Media> for MediaResponse {
   }
 }
 
-// /// Gets a list of all media
-// // FIXME: skips new media in /gallery/username/<medianame>; /gallery/username/<some_folder>/<medianame> works
-// #[openapi]
-// #[get("/media")]
-// pub async fn media_structure(claims: Claims, conn: DbConn) -> Json<Vec<MediaResponse>> {
-//   error!("user_id: {}", claims.user_id);
+#[derive(TypedPath)]
+#[typed_path("/media")]
+pub struct MediaRoute;
 
-//   let structure = db::media::get_media_structure(&conn, claims.user_id).await;
+/// Gets a list of all media
+// FIXME: skips new media in /gallery/username/<medianame>; /gallery/username/<some_folder>/<medianame> works
+pub async fn media_structure(
+  _: MediaRoute,
+  State(pool): State<ConnectionPool>,
+  Extension(claims): Extension<Arc<Claims>>
+) -> Result<Json<Vec<MediaResponse>>, StatusCode> {
+  error!("user_id: {}", claims.user_id);
 
-//   Json(structure)
-// }
+  let structure = db::media::get_media_structure(pool.get().await.unwrap(), claims.user_id).await;
+
+  Ok(Json(structure))
+}
 
 // #[derive(JsonSchema)]
 #[derive(Serialize, Deserialize, Queryable)]
@@ -180,17 +186,17 @@ pub struct AlbumInsertData {
 //   pub link: String
 // }
 
-// impl From<Album> for AlbumResponse {
-//   fn from(album: Album) -> Self {
-//     AlbumResponse { owner_id: album.owner_id, name: album.name, description: album.description, created_at: album.created_at, thumbnail_link: album.thumbnail_link, link: album.link }
-//   }
-// }
+impl From<Album> for AlbumResponse {
+  fn from(album: Album) -> Self {
+    AlbumResponse { owner_id: album.owner_id, name: album.name, description: album.description, created_at: album.created_at, thumbnail_link: album.thumbnail_link, link: album.link }
+  }
+}
 
-// impl From<&Album> for AlbumResponse {
-//   fn from(album: &Album) -> Self {
-//     AlbumResponse { owner_id: album.owner_id, name: album.name.clone(), description: album.description.clone(), created_at: album.created_at, thumbnail_link: album.thumbnail_link.clone(), link: album.link.clone() }
-//   }
-// }
+impl From<&Album> for AlbumResponse {
+  fn from(album: &Album) -> Self {
+    AlbumResponse { owner_id: album.owner_id, name: album.name.clone(), description: album.description.clone(), created_at: album.created_at, thumbnail_link: album.thumbnail_link.clone(), link: album.link.clone() }
+  }
+}
 
 // impl From<NewAlbum> for AlbumResponse {
 //   fn from(album: NewAlbum) -> Self {
@@ -198,207 +204,230 @@ pub struct AlbumInsertData {
 //   }
 // }
 
-// /// Creates a new album
-// #[openapi]
-// #[post("/album", data = "<album_insert_data>", format = "json")]
-// pub async fn create_album(claims: Claims, conn: DbConn, album_insert_data: Json<AlbumInsertData>) -> Json<Option<AlbumResponse>> {
-//   db::albums::insert_album(&conn, claims.user_id, album_insert_data.into_inner()).await;
+#[derive(TypedPath)]
+#[typed_path("/album")]
+pub struct AlbumRoute;
 
-//   let last_insert_id = db::general::get_last_insert_id(&conn).await;
+/// Creates a new album
+// TODO: change response later
+pub async fn create_album(
+  _: AlbumRoute,
+  State(pool): State<ConnectionPool>,
+  Extension(claims): Extension<Arc<Claims>>,
+  Json(album_insert_data): Json<AlbumInsertData>
+) -> Json<Option<AlbumResponse>> {
+  db::albums::insert_album(pool.get().await.unwrap(), claims.user_id, album_insert_data).await;
 
-//   if last_insert_id.is_none() {
-//     error!("Last insert id was not returned. This may happen if restarting MySQL during scanning.");
-//     return Json(None);
-//   }
+  let Some(last_insert_id) = db::general::get_last_insert_id(pool.get().await.unwrap()).await else {
+    error!("Last insert id was not returned. This may happen if restarting MySQL during scanning.");
+    return Json(None);
+  };
 
-//   let accessible = db::albums::user_has_album_access(&conn, claims.user_id, last_insert_id.unwrap()).await;
-//   if accessible.is_err() || !accessible.unwrap() { return Json(None); }
+  let accessible = db::albums::user_has_album_access(pool.get().await.unwrap(), claims.user_id, last_insert_id).await;
+  if accessible.is_err() || !accessible.unwrap() { return Json(None); }
 
-//   // TODO: impl from u jiné struktury bez ID a hesla
-//   let album = db::albums::select_album(&conn, last_insert_id.unwrap()).await;
-//   if album.is_none() { return Json(None); }
+  // TODO: impl from u jiné struktury bez ID a hesla
+  let Some(album) = db::albums::select_album(pool.get().await.unwrap(), last_insert_id).await else {
+    return Json(None);
+  };
 
-//   Json(Some(AlbumResponse::from(album.unwrap())))
-// }
-
-// #[derive(Deserialize, JsonSchema)]
-// pub struct AlbumAddMedia {
-//   album_uuid: String,
-//   media_uuid: String,
-// }
-
-// /// Adds media to an album
-// #[openapi]
-// #[post("/album/media", data = "<list_of_media>", format = "json")]
-// pub async fn album_add_media(claims: Claims, conn: DbConn, list_of_media: Json<Vec<AlbumAddMedia>>) -> Result<(), Status> {
-//   let mut transformed = vec![];
-
-//   // TODO: optimise this so it doesn't check the same data multiple times
-//   for new in list_of_media.into_inner() {
-//     let album_id = db::albums::select_album_id(&conn, new.album_uuid).await;
-//     if album_id.is_none() { continue; }
-
-//     let album_access = db::albums::user_has_album_access(&conn, claims.user_id, album_id.unwrap()).await;
-//     if album_access.is_err() { return Err(Status::InternalServerError) };
-//     if !album_access.unwrap() { return Err(Status::Forbidden) }
-
-//     let media_access = db::media::media_user_has_access(&conn, new.media_uuid.clone(), claims.user_id).await;
-//     if media_access.is_err() { return Err(Status::InternalServerError) };
-//     if !media_access.unwrap() { return Err(Status::Forbidden) }
-
-//     let media_id = db::media::select_media_id(&conn, new.media_uuid).await;
-//     if media_id.is_none() { continue; }
-
-//     // skip media that is already present in the album
-//     let has_media = db::albums::album_already_has_media(&conn, album_id.unwrap(), media_id.unwrap()).await;
-//     if has_media.is_err() { return Err(Status::InternalServerError) };
-
-//     if has_media.unwrap() { continue; }
-
-//     transformed.push(NewAlbumMedia {
-//       album_id: album_id.unwrap(),
-//       media_id: media_id.unwrap()
-//     })
-//   }
-
-//   let r = db::albums::album_add_media(&conn, transformed).await;
-//   if r.is_none() {
-//     return Err(Status::InternalServerError);
-//   }
-
-//   Ok(())
-// }
-
-// /// Retrieves a list of albums of an authenticated user
-// #[openapi]
-// #[get("/album")]
-// pub async fn get_album_list(claims: Claims, conn: DbConn) -> Json<Vec<AlbumResponse>> {
-//   let albums = db::albums::get_album_list(&conn, claims.user_id).await;
-
-//   let result = albums.iter()
-//     .map(AlbumResponse::from)
-//     .collect::<Vec<AlbumResponse>>();
-
-//   Json(result)
-// }
+  Json(Some(AlbumResponse::from(album)))
+}
 
 // #[derive(JsonSchema)]
+#[derive(Deserialize)]
+pub struct AlbumAddMedia {
+  album_uuid: String,
+  media_uuid: String,
+}
+
+#[derive(TypedPath)]
+#[typed_path("/album/media")]
+pub struct AlbumMediaRoute;
+
+/// Adds media to an album
+pub async fn album_add_media(
+  _: AlbumMediaRoute,
+  State(pool): State<ConnectionPool>,
+  Extension(claims): Extension<Arc<Claims>>,
+  Json(list_of_media): Json<Vec<AlbumAddMedia>>
+) -> Result<(), StatusCode> {
+  let mut transformed = vec![];
+
+  // TODO: optimise this so it doesn't check the same data multiple times
+  for new in list_of_media {
+    let album_id = db::albums::select_album_id(pool.get().await.unwrap(), new.album_uuid).await;
+    if album_id.is_none() { continue; }
+
+    let album_access = db::albums::user_has_album_access(pool.get().await.unwrap(), claims.user_id, album_id.unwrap()).await;
+    if album_access.is_err() { return Err(StatusCode::INTERNAL_SERVER_ERROR) };
+    if !album_access.unwrap() { return Err(StatusCode::FORBIDDEN) }
+
+    let media_access = db::media::media_user_has_access(pool.get().await.unwrap(), new.media_uuid.clone(), claims.user_id).await;
+    if media_access.is_err() { return Err(StatusCode::INTERNAL_SERVER_ERROR) };
+    if !media_access.unwrap() { return Err(StatusCode::FORBIDDEN) }
+
+    let media_id = db::media::select_media_id(pool.get().await.unwrap(), new.media_uuid).await;
+    if media_id.is_none() { continue; }
+
+    // skip media that is already present in the album
+    let has_media = db::albums::album_already_has_media(pool.get().await.unwrap(), album_id.unwrap(), media_id.unwrap()).await;
+    if has_media.is_err() { return Err(StatusCode::INTERNAL_SERVER_ERROR) };
+
+    if has_media.unwrap() { continue; }
+
+    transformed.push(NewAlbumMedia {
+      album_id: album_id.unwrap(),
+      media_id: media_id.unwrap()
+    })
+  }
+
+  let r = db::albums::album_add_media(pool.get().await.unwrap(), transformed).await;
+  if r.is_none() {
+    return Err(StatusCode::INTERNAL_SERVER_ERROR);
+  }
+
+  Ok(())
+}
+
+/// Retrieves a list of albums of an authenticated user
+pub async fn get_album_list(
+  _: AlbumRoute,
+  State(pool): State<ConnectionPool>,
+  Extension(claims): Extension<Arc<Claims>>
+) -> Json<Vec<AlbumResponse>> {
+  let albums = db::albums::get_album_list(pool.get().await.unwrap(), claims.user_id).await;
+
+  let result = albums.iter()
+    .map(AlbumResponse::from)
+    .collect::<Vec<AlbumResponse>>();
+
+  Json(result)
+}
+
+// #[derive(JsonSchema)
 #[derive(Serialize, Deserialize, Queryable)]
 pub struct AlbumUpdateData {
   pub name: Option<String>,
   pub description: Option<String>,
 }
 
-// // TODO: rewrite later and use forwarding (ranks)
-// // problem seems to be in okapi as it overwrites the route when there are multiple ranks
-// // while the Request guards are wrapped in Option, there are no error codes from that Request guards
-// /// Gets a list of media in an album
-// #[openapi]
-// #[get("/album/<album_uuid>/media")]
-// pub async fn get_album_structure(shared_album_link_security: Option<SharedAlbumLinkSecurity>, claims_option: Option<Claims>, conn: DbConn, album_uuid: String) -> Result<Json<Vec<MediaResponse>>, Status> {
-//   let album_id_option = db::albums::select_album_id(&conn, album_uuid).await;
-//   if album_id_option.is_none() {
-//     return Err(Status::NotFound);
-//   }
+#[derive(TypedPath, Deserialize)]
+#[typed_path("/album/:album_uuid/media")]
+pub struct AlbumUuidMediaRoute {
+  album_uuid: String,
+}
 
-//   let album_option = db::albums::select_album(&conn, album_id_option.unwrap()).await;
-//   if album_option.is_none() {
-//     return Err(Status::NotFound);
-//   }
+/// Gets a list of media in an album
+// TODO: consider using the Extension extractor for auth here
+pub async fn get_album_structure(
+  AlbumUuidMediaRoute { album_uuid }: AlbumUuidMediaRoute,
+  State(pool): State<ConnectionPool>,
+  request: Request<Body>
+) -> Result<Json<Vec<MediaResponse>>, StatusCode> {
+  let Some(album_id) = db::albums::select_album_id(pool.get().await.unwrap(), album_uuid).await else {
+    return Err(StatusCode::NOT_FOUND);
+  };
 
-//   let album = album_option.unwrap();
+  let Some(album) = db::albums::select_album(pool.get().await.unwrap(), album_id).await else {
+    return Err(StatusCode::NOT_FOUND);
+  };
 
-//   if claims_option.is_some() {
-//     if album.owner_id != claims_option.unwrap().user_id {
-//       return Err(Status::Unauthorized);
-//     }
+  if let Some(claims) = request.extensions().get::<Claims>() {
+      if album.owner_id != claims.user_id {
+        return Err(StatusCode::UNAUTHORIZED);
+      }
 
-//     // let accessible = db::albums::user_has_album_access(&conn, claims.user_id, album_id).await;
-//     // if accessible.is_err() { return Err(Status::InternalServerError) }
+      // let accessible = db::albums::user_has_album_access(pool.get().await.unwrap(), claims.user_id, album_id).await;
+      // if accessible.is_err() { return Err(StatusCode::InternalServerError) }
 
-//     // if !accessible.unwrap() {
-//     //   return Err(Status::Forbidden);
-//     // }
+      // if !accessible.unwrap() {
+      //   return Err(StatusCode::Forbidden);
+      // }
 
-//     // TODO: check if non-owner user has permission to access the album (preparation for shared albums)
+      // TODO: check if non-owner user has permission to access the album (preparation for shared albums)
+  } else if let Some(special) = request.extensions().get::<SharedAlbumLinkSecurity>() {
+    // TODO: maybe check more things
+  } else {
+    return Err(StatusCode::UNAUTHORIZED);
+  };
 
-//   } else if shared_album_link_security.is_some() {
-//     // TODO: maybe check more things
-//   } else {
-//     return Err(Status::Unauthorized);
-//   }
+  let Ok(structure) = db::albums::get_album_media(pool.get().await.unwrap(), album.id).await else {
+    return Err(StatusCode::INTERNAL_SERVER_ERROR);
+  };
 
-//   let structure = db::albums::get_album_media(&conn, album.id).await;
+  let result = structure.iter()
+    .map(MediaResponse::from)
+    .collect::<Vec<MediaResponse>>();
 
-//   if structure.is_err() { return Err(Status::InternalServerError) }
+  Ok(Json(result))
+}
 
-//   let result = structure.unwrap().iter()
-//     .map(MediaResponse::from)
-//     .collect::<Vec<MediaResponse>>();
+/// Updates already existing album
+pub async fn update_album(
+  AlbumUuidRoute { album_uuid }: AlbumUuidRoute,
+  State(pool): State<ConnectionPool>,
+  Extension(claims): Extension<Arc<Claims>>,
+  Json(album_update_data): Json<AlbumUpdateData>
+) -> Result<StatusCode, StatusCode> {
+  if album_update_data.name.is_none() && album_update_data.description.is_none() {
+    return Err(StatusCode::UNPROCESSABLE_ENTITY);
+  }
 
-//   Ok(Json(result))
-// }
+  let album_id_option = db::albums::select_album_id(pool.get().await.unwrap(), album_uuid).await;
+  if album_id_option.is_none() {
+    return Err(StatusCode::NOT_FOUND);
+  }
 
-// /// Updates already existing album
-// #[openapi]
-// #[put("/album/<album_uuid>", data = "<album_update_data>", format = "json")]
-// pub async fn update_album(claims: Claims, conn: DbConn, album_uuid: String, album_update_data: Json<AlbumUpdateData>) -> Result<Status, Status> {
-//   if album_update_data.name.is_none() && album_update_data.description.is_none() {
-//     return Err(Status::UnprocessableEntity);
-//   }
+  let album_id = album_id_option.unwrap();
 
-//   let album_id_option = db::albums::select_album_id(&conn, album_uuid).await;
-//   if album_id_option.is_none() {
-//     return Err(Status::NotFound);
-//   }
+  let accessible = db::albums::user_has_album_access(pool.get().await.unwrap(), claims.user_id, album_id).await;
+  if accessible.is_err() { return Err(StatusCode::INTERNAL_SERVER_ERROR) }
 
-//   let album_id = album_id_option.unwrap();
+  if !accessible.unwrap() {
+    return Err(StatusCode::FORBIDDEN);
+  }
 
-//   let accessible = db::albums::user_has_album_access(&conn, claims.user_id, album_id).await;
-//   if accessible.is_err() { return Err(Status::InternalServerError) }
+  let changed_rows = db::albums::update_album(pool.get().await.unwrap(), album_id, album_update_data).await;
+  error!("changed: {:?}", changed_rows);
+  if changed_rows.is_none() { return Err(StatusCode::INTERNAL_SERVER_ERROR) }
 
-//   if !accessible.unwrap() {
-//     return Err(Status::Forbidden);
-//   }
+  if changed_rows.unwrap() == 0 {
+    return Ok(StatusCode::NO_CONTENT);
+  }
 
-//   let changed_rows = db::albums::update_album(&conn, album_id, album_update_data.into_inner()).await;
-//   error!("changed: {:?}", changed_rows);
-//   if changed_rows.is_none() { return Err(Status::InternalServerError) }
+  Ok(StatusCode::OK)
+}
 
-//   if changed_rows.unwrap() == 0 {
-//     return Ok(Status::NoContent);
-//   }
+/// Deletes an album
+pub async fn delete_album(
+  AlbumUuidRoute { album_uuid }: AlbumUuidRoute,
+  State(pool): State<ConnectionPool>,
+  Extension(claims): Extension<Arc<Claims>>
+) -> Result<StatusCode, StatusCode> {
+  let album_id_option = db::albums::select_album_id(pool.get().await.unwrap(), album_uuid).await;
+  if album_id_option.is_none() {
+    return Err(StatusCode::NOT_FOUND);
+  }
 
-//   Ok(Status::Ok)
-// }
+  let album_id = album_id_option.unwrap();
 
-// /// Deletes an album
-// #[openapi]
-// #[delete("/album/<album_uuid>")]
-// pub async fn delete_album(claims: Claims, conn: DbConn, album_uuid: String) -> Result<Status, Status> {
-//   let album_id_option = db::albums::select_album_id(&conn, album_uuid).await;
-//   if album_id_option.is_none() {
-//     return Err(Status::NotFound);
-//   }
+  let album = db::albums::select_album(pool.get().await.unwrap(), album_id).await;
 
-//   let album_id = album_id_option.unwrap();
+  if album.is_none() { return Err(StatusCode::NOT_FOUND); }
 
-//   let album = db::albums::select_album(&conn, album_id).await;
+  let accessible = db::albums::user_has_album_access(pool.get().await.unwrap(), claims.user_id, album_id).await;
+  if accessible.is_err() { return Err(StatusCode::INTERNAL_SERVER_ERROR) }
 
-//   if album.is_none() { return Err(Status::NotFound); }
+  if !accessible.unwrap() {
+    return Err(StatusCode::FORBIDDEN);
+  }
 
-//   let accessible = db::albums::user_has_album_access(&conn, claims.user_id, album_id).await;
-//   if accessible.is_err() { return Err(Status::InternalServerError) }
+  let deleted = db::albums::delete_album(pool.get().await.unwrap(), album_id).await;
+  if deleted.is_err() { return Err(StatusCode::IM_A_TEAPOT) }
 
-//   if !accessible.unwrap() {
-//     return Err(Status::Forbidden);
-//   }
-
-//   let deleted = db::albums::delete_album(&conn, album_id).await;
-//   if deleted.is_err() { return Err(Status::ImATeapot) }
-
-//   Ok(Status::Ok)
-// }
+  Ok(StatusCode::OK)
+}
 
 // #[derive(JsonSchema)]
 #[derive(Serialize, Deserialize)]
@@ -620,6 +649,12 @@ pub struct AlbumShareLinkInsert {
 //   "true"
 // }
 
+
+#[derive(TypedPath, Deserialize)]
+#[typed_path("/album/:album_uuid")]
+pub struct AlbumUuidRoute {
+  album_uuid: String,
+}
 // // TODO: rewrite later and use forwarding (ranks)
 // // problem seems to be in okapi as it overwrites the route when there are multiple ranks
 // // while the Request guards are wrapped in Option, there are no error codes from that Request guards
