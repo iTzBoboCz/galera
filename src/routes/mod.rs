@@ -1,26 +1,32 @@
 use std::sync::Arc;
+use crate::auth::shared_album_link::SharedAlbumLinkSecurity;
+use crate::auth::token::Claims;
 // use crate::auth::login::{UserLogin, UserInfo, LoginResponse};
 // use crate::auth::shared_album_link::{SharedAlbumLinkSecurity, hash_password};
 // use crate::auth::token::{Claims, ClaimsEncoded};
-// use crate::directories::Directories;
 use crate::db::{self, users::get_user_by_id};
+use crate::directories::Directories;
 use crate::models::{Album, AlbumShareLink, Folder, Media, NewAlbum, NewAlbumMedia, NewAlbumShareLink, NewUser};
-use axum::extract::State;
+use axum::Extension;
+use axum::body::{Body, StreamBody};
+use axum::extract::{State, RawQuery};
+use axum::http::Request;
 use axum::{Json, http::StatusCode};
 use axum_extra::routing::TypedPath;
-use tracing::info;
-// use crate::scan;
-// use crate::schema::media;
+use tracing::{info, error};
+use crate::scan;
+use crate::schema::media;
 use crate::{DbConn, ConnectionPool};
 use chrono::{NaiveDateTime, Utc};
-// use diesel::ExpressionMethods;
-// use diesel::OptionalExtension;
-// use diesel::QueryDsl;
-// use diesel::RunQueryDsl;
-// use diesel::Table;
+use diesel::ExpressionMethods;
+use diesel::OptionalExtension;
+use diesel::QueryDsl;
+use diesel::RunQueryDsl;
+use diesel::Table;
 // use rocket::{fs::NamedFile, http::Status};
 use serde::{Deserialize, Serialize};
 // use schemars::JsonSchema;
+use tokio_util::io::ReaderStream;
 
 // #[openapi]
 // #[get("/")]
@@ -656,59 +662,71 @@ pub struct AlbumShareLinkInsert {
 pub struct AlbumUuidRoute {
   album_uuid: String,
 }
-// // TODO: rewrite later and use forwarding (ranks)
-// // problem seems to be in okapi as it overwrites the route when there are multiple ranks
-// // while the Request guards are wrapped in Option, there are no error codes from that Request guards
+
+#[derive(TypedPath, Deserialize)]
+#[typed_path("/media/:media_uuid")]
+pub struct MediaUuidRoute {
+  media_uuid: String,
+}
+
 // /// Returns a media
-// #[openapi]
-// #[get("/media/<media_uuid>")]
-// pub async fn get_media_by_uuid(shared_album_link_security: Option<SharedAlbumLinkSecurity>, claims_option: Option<Claims>, conn: DbConn, media_uuid: String) -> Option<NamedFile> {
-//   let media: Media = conn.run(|c| {
-//     media::table
-//       .select(media::table::all_columns())
-//       .filter(media::dsl::uuid.eq(media_uuid))
-//       .first::<Media>(c)
-//       .optional()
-//       .unwrap()
-//   }).await?;
+pub async fn get_media_by_uuid(
+  MediaUuidRoute { media_uuid }: MediaUuidRoute,
+  State(pool): State<ConnectionPool>,
+  request: Request<Body>
+) -> Result<StreamBody<ReaderStream<tokio::fs::File>>, StatusCode> {
+  let Ok(media) = pool.get().await.unwrap().interact(|c| {
+    media::table
+      .select(media::table::all_columns())
+      .filter(media::dsl::uuid.eq(media_uuid))
+      .first::<Media>(c)
+      .unwrap()
+  }).await else { return Err(StatusCode::NOT_FOUND) };
 
-//   if claims_option.is_some() {
-//     if media.owner_id != claims_option.unwrap().user_id {
-//       return None;
-//     }
+  if let Some(claims) = request.extensions().get::<Arc<Claims>>() {
+    if media.owner_id != claims.user_id {
+      return Err(StatusCode::UNAUTHORIZED);
+    }
 
-//     // TODO: check if non-owner user has permission to access the album (preparation for shared albums)
+    // TODO: check if non-owner user has permission to access the album (preparation for shared albums)
 
-//   } else if shared_album_link_security.is_some() {
-//     // TODO: maybe check more things
-//   } else {
-//     return None;
-//   }
+  } else if let Some(special) = request.extensions().get::<Arc<SharedAlbumLinkSecurity>>() {
+    // TODO: maybe check more things
+  } else {
+    return Err(StatusCode::UNAUTHORIZED);
+  }
 
-//   let directories = Directories::new();
-//   if directories.is_none() { return None; }
+  let directories = Directories::new();
+  if directories.is_none() { return Err(StatusCode::INTERNAL_SERVER_ERROR); }
 
-//   let xdg_data = directories.unwrap().gallery().to_owned();
-//   if xdg_data.is_none() { return None; }
+  let xdg_data = directories.unwrap().gallery().to_owned();
+  if xdg_data.is_none() { return Err(StatusCode::INTERNAL_SERVER_ERROR); }
 
-//   let mut folders: Vec<Folder> = vec!();
+  let mut folders: Vec<Folder> = vec!();
 
-//   let current_folder = db::folders::select_folder(&conn, media.folder_id).await?;
-//   folders.push(current_folder.clone());
+  let Some(current_folder) = db::folders::select_folder(pool.get().await.unwrap(), media.folder_id).await else { return Err(StatusCode::INTERNAL_SERVER_ERROR); };
+  folders.push(current_folder.clone());
 
-//   scan::select_parent_folder_recursive(&conn, current_folder, media.owner_id, &mut folders);
+  scan::select_parent_folder_recursive(pool, current_folder, media.owner_id, &mut folders);
 
-//   let mut path = xdg_data.unwrap();
+  let mut path = xdg_data.unwrap();
 
-//   if !folders.is_empty() {
-//     for folder in folders.iter().rev() {
-//       path = path.join(folder.name.as_str());
-//     }
-//   }
-//   path = path.join(&media.filename);
+  if !folders.is_empty() {
+    for folder in folders.iter().rev() {
+      path = path.join(folder.name.as_str());
+    }
+  }
+  path = path.join(&media.filename);
 
-//   NamedFile::open(path).await.ok()
-// }
+  // `File` implements `AsyncRead`
+  let Ok(file) = tokio::fs::File::open(path).await else {
+    return Err(StatusCode::INTERNAL_SERVER_ERROR);
+  };
+  // convert the `AsyncRead` into a `Stream`
+  let stream = ReaderStream::new(file);
+  // convert the `Stream` into an `axum::body::HttpBody`
+  Ok(StreamBody::new(stream))
+}
 
 // #[derive(Serialize, Deserialize, JsonSchema)]
 // pub struct MediaDescription {

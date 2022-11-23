@@ -33,7 +33,7 @@ use tower_http::trace::TraceLayer;
 mod routes;
 mod models;
 mod db;
-// mod scan;
+mod scan;
 mod schema;
 mod auth;
 mod directories;
@@ -60,6 +60,9 @@ async fn main() {
     .with(tracing_subscriber::fmt::layer())
     .init();
 
+  let dir = Directories::new();
+  if dir.is_none() { panic!("Directories check failed."); }
+
   let recorder_handle = setup_metrics_recorder();
 
   let pool = create_db_pool().await;
@@ -69,6 +72,7 @@ async fn main() {
 
 
   let protected = Router::new()
+    .typed_get(routes::get_media_by_uuid)
     .typed_post(routes::create_album)
     .typed_get(routes::album_add_media)
     .typed_get(routes::get_album_list)
