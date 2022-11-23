@@ -1,3 +1,4 @@
+use std::sync::Arc;
 // use crate::auth::login::{UserLogin, UserInfo, LoginResponse};
 // use crate::auth::shared_album_link::{SharedAlbumLinkSecurity, hash_password};
 // use crate::auth::token::{Claims, ClaimsEncoded};
@@ -333,7 +334,7 @@ pub async fn get_album_structure(
     return Err(StatusCode::NOT_FOUND);
   };
 
-  if let Some(claims) = request.extensions().get::<Claims>() {
+  if let Some(claims) = request.extensions().get::<Arc<Claims>>() {
       if album.owner_id != claims.user_id {
         return Err(StatusCode::UNAUTHORIZED);
       }
@@ -346,7 +347,7 @@ pub async fn get_album_structure(
       // }
 
       // TODO: check if non-owner user has permission to access the album (preparation for shared albums)
-  } else if let Some(special) = request.extensions().get::<SharedAlbumLinkSecurity>() {
+  } else if let Some(special) = request.extensions().get::<Arc<SharedAlbumLinkSecurity>>() {
     // TODO: maybe check more things
   } else {
     return Err(StatusCode::UNAUTHORIZED);

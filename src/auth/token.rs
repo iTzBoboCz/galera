@@ -1,4 +1,4 @@
-use std::convert::TryFrom;
+use std::{convert::TryFrom, sync::Arc};
 use chrono::Utc;
 use serde::{Serialize, Deserialize};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, TokenData, Validation};
@@ -255,7 +255,7 @@ pub async fn auth<B>(State(pool): State<ConnectionPool>, TypedHeader(Authorizati
     if claims.is_valid(pool).await {
       // insert the current user into a request extension so the handler can
       // extract it
-      req.extensions_mut().insert(claims);
+      req.extensions_mut().insert(Arc::new(claims));
       return Ok(next.run(req).await)
     };
 

@@ -2,7 +2,7 @@ use axum::{extract::State, TypedHeader, headers::{Authorization, authorization},
 use serde::{Serialize, Deserialize};
 use sha2::Digest;
 use crate::{db::{albums::{select_album, select_album_share_link_by_uuid}}, ConnectionPool};
-use std::str;
+use std::{str, sync::Arc};
 
 // #[derive(JsonSchema)]
 #[derive(Debug, Serialize, Deserialize)]
@@ -48,7 +48,7 @@ pub async fn shared_album_link<B>(State(pool): State<ConnectionPool>, TypedHeade
 
   // insert the current user into a request extension so the handler can
   // extract it
-  req.extensions_mut().insert(album_share_link_security);
+  req.extensions_mut().insert(Arc::new(album_share_link_security));
   return Ok(next.run(req).await)
 }
 
