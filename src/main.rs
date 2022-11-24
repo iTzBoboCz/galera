@@ -78,6 +78,7 @@ async fn main() {
 
 
   let protected = Router::new()
+    .typed_get(routes::media_structure)
     .typed_get(routes::get_media_by_uuid)
     .typed_post(routes::create_album)
     .typed_get(routes::album_add_media)
