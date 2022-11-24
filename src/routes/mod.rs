@@ -676,27 +676,29 @@ pub async fn delete_album_share_link(
   Ok(StatusCode::OK)
 }
 
-// /// Searches for new media
-// // https://api.rocket.rs/master/rocket/struct.State.html
-// #[openapi]
-// #[get("/scan_media")]
-// pub async fn scan_media(claims: Claims, conn: DbConn) -> &'static str {
-//   let directories = Directories::new();
-//   if directories.is_none() { return "false"; }
+#[derive(TypedPath, Deserialize)]
+#[typed_path("/scan_media")]
+pub struct ScanMediaRoute;
 
-//   let xdg_data = directories.unwrap().gallery().to_owned();
-//   if xdg_data.is_none() { return "false"; }
+/// Searches for new media
+pub async fn scan_media(
+  _: ScanMediaRoute,
+  State(pool): State<ConnectionPool>,
+  Extension(claims): Extension<Arc<Claims>>
+) -> Result<StatusCode, StatusCode> {
+  let Some(directories) = Directories::new() else {
+    return Err(StatusCode::INTERNAL_SERVER_ERROR);
+  };
 
-//   // let now_future = Delay::new(Duration::from_secs(10));
+  let Some(xdg_data) = directories.gallery().to_owned() else {
+    return Err(StatusCode::INTERNAL_SERVER_ERROR);
+  };
 
-//   // this thread will run until scanning is complete
-//   // thread::spawn(|conn, xdg_data, user_id| async {
-//   scan::scan_root(&conn, xdg_data.unwrap(), claims.user_id).await;
-//   // });
+  // this thread will run until scanning is complete
+  tokio::spawn(scan::scan_root(pool, xdg_data, claims.user_id));
 
-//   "true"
-// }
-
+  Ok(StatusCode::OK)
+}
 
 #[derive(TypedPath, Deserialize)]
 #[typed_path("/album/:album_uuid")]

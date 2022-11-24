@@ -93,6 +93,7 @@ async fn main() {
     .typed_post(routes::create_album_share_link)
     .typed_put(routes::update_album_share_link)
     .typed_delete(routes::delete_album_share_link)
+    .typed_get(routes::scan_media)
     .route_layer(middleware::from_fn_with_state(pool.clone(), auth::token::auth));
 
   let unprotected = Router::new()
