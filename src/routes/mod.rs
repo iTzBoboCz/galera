@@ -728,63 +728,69 @@ pub async fn get_media_by_uuid(
   Ok(StreamBody::new(stream))
 }
 
-// #[derive(Serialize, Deserialize, JsonSchema)]
-// pub struct MediaDescription {
-//   description: Option<String>
-// }
+// #[derive(JsonSchema)]
+#[derive(Serialize, Deserialize)]
+pub struct MediaDescription {
+  description: Option<String>
+}
 
-// /// Updates description of a media
-// #[openapi]
-// #[put("/media/<media_uuid>/description", data = "<description>", format = "json")]
-// pub async fn media_update_description(claims: Claims, conn: DbConn, media_uuid: String, description: Json<MediaDescription>) -> Result<Status, Status> {
-//   let media_id_option = db::media::select_media_id(&conn, media_uuid.clone()).await;
-//   if media_id_option.is_none() {
-//     return Err(Status::NotFound);
-//   }
+#[derive(TypedPath, Deserialize)]
+#[typed_path("/media/:media_uuid/description")]
+pub struct MediaUuidDescriptionRoute {
+  media_uuid: String,
+}
 
-//   let access = db::media::media_user_has_access(&conn, media_uuid, claims.user_id).await;
-//   if access.is_err() { return Err(Status::InternalServerError) }
+/// Updates description of a media
+pub async fn media_update_description(
+  MediaUuidDescriptionRoute { media_uuid }: MediaUuidDescriptionRoute,
+  State(pool): State<ConnectionPool>,
+  Extension(claims): Extension<Arc<Claims>>,
+  Json(description): Json<MediaDescription>
+) -> Result<StatusCode, StatusCode> {
+  let Some(media_id) = db::media::select_media_id(pool.get().await.unwrap(), media_uuid.clone()).await else {
+    return Err(StatusCode::NOT_FOUND);
+  };
 
-//   if !access.unwrap() { return Err(Status::Forbidden) }
+  let access = db::media::media_user_has_access(pool.get().await.unwrap(), media_uuid, claims.user_id).await;
+  if access.is_err() { return Err(StatusCode::INTERNAL_SERVER_ERROR) }
 
-//   let media_id = media_id_option.unwrap();
+  if !access.unwrap() { return Err(StatusCode::FORBIDDEN) }
 
-//   let mut description_option = description.into_inner().description;
+  let mut description_option = description.description;
 
-//   // check for empty string
-//   if let Some(string) = description_option {
-//     description_option = if string.chars().count() > 0 { Some(string) } else { None };
-//   }
+  // check for empty string
+  if let Some(string) = description_option {
+    description_option = if string.chars().count() > 0 { Some(string) } else { None };
+  }
 
-//   let result = db::media::update_description(&conn, media_id, description_option).await;
+  let result = db::media::update_description(pool.get().await.unwrap(), media_id, description_option).await;
 
-//   if result.is_err() { return Err(Status::InternalServerError) }
+  if result.is_err() { return Err(StatusCode::INTERNAL_SERVER_ERROR) }
 
-//   Ok(Status::Ok)
-// }
+  Ok(StatusCode::OK)
+}
 
-// /// Deletes description of a media
-// #[openapi]
-// #[delete("/media/<media_uuid>/description")]
-// pub async fn media_delete_description(claims: Claims, conn: DbConn, media_uuid: String) -> Result<Status, Status> {
-//   let media_id_option = db::media::select_media_id(&conn, media_uuid.clone()).await;
-//   if media_id_option.is_none() {
-//     return Err(Status::NotFound);
-//   }
+/// Deletes description of a media
+pub async fn media_delete_description(
+  MediaUuidDescriptionRoute { media_uuid }: MediaUuidDescriptionRoute,
+  State(pool): State<ConnectionPool>,
+  Extension(claims): Extension<Arc<Claims>>
+) -> Result<StatusCode, StatusCode> {
+  let Some(media_id) = db::media::select_media_id(pool.get().await.unwrap(), media_uuid.clone()).await else {
+    return Err(StatusCode::NOT_FOUND);
+  };
 
-//   let access = db::media::media_user_has_access(&conn, media_uuid, claims.user_id).await;
-//   if access.is_err() { return Err(Status::InternalServerError) }
+  let access = db::media::media_user_has_access(pool.get().await.unwrap(), media_uuid, claims.user_id).await;
+  if access.is_err() { return Err(StatusCode::INTERNAL_SERVER_ERROR) }
 
-//   if !access.unwrap() { return Err(Status::Forbidden) }
+  if !access.unwrap() { return Err(StatusCode::FORBIDDEN) }
 
-//   let media_id = media_id_option.unwrap();
+  let result = db::media::update_description(pool.get().await.unwrap(), media_id, None).await;
 
-//   let result = db::media::update_description(&conn, media_id, None).await;
+  if result.is_err() { return Err(StatusCode::INTERNAL_SERVER_ERROR) }
 
-//   if result.is_err() { return Err(Status::InternalServerError) }
-
-//   Ok(Status::Ok)
-// }
+  Ok(StatusCode::OK)
+}
 
 // /// Returns a list of liked media.
 // #[openapi]
