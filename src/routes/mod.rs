@@ -1,9 +1,8 @@
 use std::sync::Arc;
 use crate::auth::shared_album_link::SharedAlbumLinkSecurity;
-use crate::auth::token::Claims;
-// use crate::auth::login::{UserLogin, UserInfo, LoginResponse};
+use crate::auth::login::{UserLogin, UserInfo, LoginResponse};
 // use crate::auth::shared_album_link::{SharedAlbumLinkSecurity, hash_password};
-// use crate::auth::token::{Claims, ClaimsEncoded};
+use crate::auth::token::{Claims, ClaimsEncoded};
 use crate::db::{self, users::get_user_by_id};
 use crate::directories::Directories;
 use crate::models::{Album, AlbumShareLink, Folder, Media, NewAlbum, NewAlbumMedia, NewAlbumShareLink, NewUser};
@@ -57,82 +56,93 @@ pub async fn create_user(
   Ok(StatusCode::OK)
 }
 
+#[derive(TypedPath)]
+#[typed_path("/login")]
+pub struct LoginRoute;
+
+/// You must provide either a username or an email together with a password.
+pub async fn login(
+  _: LoginRoute,
+  State(pool): State<ConnectionPool>,
+  Json(user_login): Json<UserLogin>,
+) -> Result<Json<LoginResponse>, StatusCode> {
+  let token_option = user_login.hash_password().login(pool.clone()).await;
+  if token_option.is_none() { return Err(StatusCode::CONFLICT); }
+
+  let token = token_option.unwrap();
+
+  let user_info = get_user_by_id(pool.get().await.unwrap(), token.user_id).await;
+  if user_info.is_none() { return Err(StatusCode::INTERNAL_SERVER_ERROR) }
+
+  let encoded = token.encode();
+  if encoded.is_err() { return Err(StatusCode::INTERNAL_SERVER_ERROR) }
+
+  Ok(
+    Json(
+      LoginResponse::new(
+        encoded.unwrap(),
+        UserInfo::from(user_info.unwrap())
+      )
+    )
+  )
+}
+
+#[derive(TypedPath)]
+#[typed_path("/login/refresh")]
+pub struct LoginRefreshRoute;
+
+/// Refreshes sent token
+// TODO: send token in header instead of body
+// https://stackoverflow.com/a/53881397
+pub async fn refresh_token(
+  _: LoginRefreshRoute,
+  State(pool): State<ConnectionPool>,
+  Json(encoded_bearer_token): Json<ClaimsEncoded>,
+) -> Result<Json<ClaimsEncoded>, StatusCode> {
+  let decoded = encoded_bearer_token.clone().decode();
+  let bearer_token: Claims;
+
+  // access token is expired - most of the time (token needs to be refreshed because it is expired)
+  if decoded.is_err() {
+    let expired = match decoded.unwrap_err().kind() {
+      jsonwebtoken::errors::ErrorKind::ExpiredSignature => true,
+      _ => false
+    };
+
+    // the error is not expired token
+    if !expired { return Err(StatusCode::UNAUTHORIZED) }
+
+    let temp = encoded_bearer_token.decode_without_validation();
+
+    // couldn't be decoded
+    if temp.is_err() { return Err(StatusCode::UNAUTHORIZED) }
 
 
-// /// You must provide either a username or an email together with a password.
-// #[openapi]
-// #[post("/login", data = "<user_login>", format = "json")]
-// pub async fn login(conn: DbConn, user_login: Json<UserLogin>) -> Result<Json<LoginResponse>, Status> {
-//   let token_option = user_login.into_inner().hash_password().login(&conn).await;
-//   if token_option.is_none() { return Err(Status::Conflict); }
+    bearer_token = temp.unwrap().claims
+  } else {
+    // access token is not yet expired
+    bearer_token = decoded.unwrap().claims;
+  }
 
-//   let token = token_option.unwrap();
+  // refresh token is expired
+  if bearer_token.is_refresh_token_expired(pool.get().await.unwrap()).await { return Err(StatusCode::UNAUTHORIZED); }
 
-//   let user_info = get_user_by_id(&conn, token.user_id).await;
-//   if user_info.is_none() { return Err(Status::InternalServerError) }
+  let new_token = Claims::from_existing(&bearer_token);
 
-//   let encoded = token.encode();
-//   if encoded.is_err() { return Err(Status::InternalServerError) }
+  let Some(refresh_token_id) = db::tokens::select_refresh_token_id(pool.get().await.unwrap(), bearer_token.refresh_token()).await else {
+    return Err(StatusCode::INTERNAL_SERVER_ERROR);
+  };
 
-//   Ok(
-//     Json(
-//       LoginResponse::new(
-//         encoded.unwrap(),
-//         UserInfo::from(user_info.unwrap())
-//       )
-//     )
-//   )
-// }
+  Claims::delete_obsolete_access_tokens(pool.get().await.unwrap(), refresh_token_id).await;
 
-// /// Refreshes sent token
-// // TODO: send token in header instead of body
-// // https://stackoverflow.com/a/53881397
-// #[openapi]
-// #[post("/login/refresh", data = "<encoded_bearer_token>", format = "json")]
-// pub async fn refresh_token(conn: DbConn, encoded_bearer_token: Json<ClaimsEncoded>) -> Result<Json<ClaimsEncoded>, Status> {
-//   let bearer_token_result = encoded_bearer_token.into_inner();
-//   let decoded = bearer_token_result.clone().decode();
-//   let bearer_token: Claims;
+  if new_token.add_access_token_to_db(pool, refresh_token_id).await.is_none() { return Err(StatusCode::INTERNAL_SERVER_ERROR); }
 
-//   // access token is expired - most of the time (token needs to be refreshed because it is expired)
-//   if decoded.is_err() {
-//     let expired = match decoded.unwrap_err().kind() {
-//       jsonwebtoken::errors::ErrorKind::ExpiredSignature => true,
-//       _ => false
-//     };
+  let Ok(new_encoded_token) = new_token.encode() else {
+    return Err(StatusCode::INTERNAL_SERVER_ERROR);
+  };
 
-//     // the error is not expired token
-//     if !expired { return Err(Status::Unauthorized) }
-
-//     let temp = bearer_token_result.decode_without_validation();
-
-//     // couldn't be decoded
-//     if temp.is_err() { return Err(Status::Unauthorized) }
-
-
-//     bearer_token = temp.unwrap().claims
-//   } else {
-//     // access token is not yet expired
-//     bearer_token = decoded.unwrap().claims;
-//   }
-
-//   // refresh token is expired
-//   if bearer_token.is_refresh_token_expired(pool.get().await.unwrap()).await { return Err(StatusCode::Unauthorized); }
-
-//   let new_token = Claims::from_existing(&bearer_token);
-
-//   let refresh_token_id = db::tokens::select_refresh_token_id(&conn, bearer_token.refresh_token()).await;
-//   if refresh_token_id.is_none() { return Err(Status::InternalServerError); }
-
-//   Claims::delete_obsolete_access_tokens(&conn, refresh_token_id.unwrap()).await;
-
-//   if new_token.add_access_token_to_db(&conn, refresh_token_id.unwrap()).await.is_none() { return Err(Status::InternalServerError); }
-
-//   let new_encoded_token = new_token.encode();
-//   if new_encoded_token.is_err() { return Err(Status::InternalServerError); }
-
-//   Ok(Json(new_encoded_token.unwrap()))
-// }
+  Ok(Json(new_encoded_token))
+}
 
 // #[derive(JsonSchema)]
 #[derive(Serialize, Deserialize, Queryable)]

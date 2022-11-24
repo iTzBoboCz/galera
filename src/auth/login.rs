@@ -1,10 +1,11 @@
-use crate::{DbConn, db::users::{check_user_login_email, check_user_login_username}, models::User};
+use crate::{db::users::{check_user_login_email, check_user_login_username}, models::User, ConnectionPool};
 use serde::{Serialize, Deserialize};
 use sha2::Digest;
 use super::token::{Claims, ClaimsEncoded};
 
 /// Used for receiving login data.
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+// #[derive(JsonSchema)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct UserLogin {
   username_or_email: String,
   // #[validate(length(min = 8, max = 128))]
@@ -18,23 +19,23 @@ impl UserLogin {
   }
 
   /// Checks the credentials.
-  async fn check(&self, conn: &DbConn) -> Option<i32> {
+  async fn check(&self, pool: ConnectionPool) -> Option<i32> {
     if self.is_email() {
-      return check_user_login_email(conn, self.username_or_email.clone(), self.password.clone()).await;
+      return check_user_login_email(pool.get().await.unwrap(), self.username_or_email.clone(), self.password.clone()).await;
     } else {
-      return check_user_login_username(conn, self.username_or_email.clone(), self.password.clone()).await;
+      return check_user_login_username(pool.get().await.unwrap(), self.username_or_email.clone(), self.password.clone()).await;
     }
   }
 
   /// Tries to log the user in.
-  pub async fn login(&self, conn: &DbConn) -> Option<Claims> {
-    let user_id = self.check(conn).await?;
+  pub async fn login(&self, pool: ConnectionPool) -> Option<Claims> {
+    let user_id = self.check(pool.clone()).await?;
 
     let token = Claims::new(user_id);
 
     // add refresh and access tokens to db
-    let refresh_token_id = token.add_refresh_token_to_db(conn).await?;
-    token.add_access_token_to_db(conn, refresh_token_id).await?;
+    let refresh_token_id = token.add_refresh_token_to_db(pool.clone()).await?;
+    token.add_access_token_to_db(pool, refresh_token_id).await?;
 
     Some(token)
   }
@@ -52,7 +53,8 @@ impl UserLogin {
 }
 
 /// Used for sending information about user.
-#[derive(Serialize, JsonSchema)]
+// #[derive(JsonSchema)]
+#[derive(Serialize)]
 pub struct UserInfo {
   username: String,
   email: String
@@ -77,7 +79,8 @@ impl From<User> for UserInfo {
 }
 
 /// Response when logging in.
-#[derive(Serialize, JsonSchema)]
+// #[derive(JsonSchema)]
+#[derive(Serialize)]
 pub struct LoginResponse {
   user_info: UserInfo,
   bearer_token: String,

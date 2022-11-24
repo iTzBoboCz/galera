@@ -86,6 +86,8 @@ async fn main() {
     .route("/", get(handler))
     .route("/metrics", get(move || ready(recorder_handle.render())))
     .typed_post(routes::create_user)
+    .typed_post(routes::login)
+    .typed_post(routes::refresh_token)
     .typed_get(routes::system_info_public);
 
   let mixed_auth = Router::new()
