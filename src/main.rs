@@ -18,7 +18,8 @@ extern crate diesel_migrations;
 
 use axum_extra::routing::RouterExt;
 use diesel_migrations::embed_migrations;
-// use crate::auth::secret::Secret;
+use tracing::{warn, info};
+use crate::auth::secret::Secret;
 use crate::directories::Directories;
 use axum::{response::{Html, IntoResponse}, routing::get, Router, http::Request, middleware::{Next, self}, extract::{MatchedPath, State}};
 use deadpool_diesel::{Pool, Runtime, Manager};
@@ -62,6 +63,11 @@ async fn main() {
 
   let dir = Directories::new();
   if dir.is_none() { panic!("Directories check failed."); }
+
+  let secret_check = check_secret_startup();
+  if secret_check.is_err() {
+    panic!("Secret couldn't be read and/or created: {}", secret_check.unwrap_err());
+  }
 
   let recorder_handle = setup_metrics_recorder();
 
@@ -216,19 +222,19 @@ async fn track_metrics<B>(req: Request<B>, next: Next<B>) -> impl IntoResponse {
 //     )
 // }
 
-// /// Checks whether the secret.key file is present and tries to create it if it isn't.\
-// /// This is meant to be run before starting Rocket.
-// pub fn check_secret_startup() -> Result<(), std::io::Error> {
-//   let read = Secret::read();
-//   if read.is_err() {
-//     Secret::new().write()?;
+/// Checks whether the secret.key file is present and tries to create it if it isn't.\
+/// This is meant to be run before starting Rocket.
+pub fn check_secret_startup() -> Result<(), std::io::Error> {
+  let read = Secret::read();
+  if read.is_err() {
+    Secret::new().write()?;
 
-//     // It is also possible to have write-only access, so we must check reading too.
-//     Secret::read()?;
+    // It is also possible to have write-only access, so we must check reading too.
+    Secret::read()?;
 
-//     warn!("Created missing secret.key file.");
-//   }
+    warn!("Created missing secret.key file.");
+  }
 
-//   info!("The secret.key file was successfully read.");
-//   Ok(())
-// }
+  info!("The secret.key file was successfully read.");
+  Ok(())
+}
