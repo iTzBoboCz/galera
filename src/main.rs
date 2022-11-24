@@ -89,6 +89,10 @@ async fn main() {
     .typed_get(routes::get_media_liked_list)
     .typed_post(routes::media_like)
     .typed_delete(routes::media_unlike)
+    .typed_get(routes::get_album_share_links)
+    .typed_post(routes::create_album_share_link)
+    .typed_put(routes::update_album_share_link)
+    .typed_delete(routes::delete_album_share_link)
     .route_layer(middleware::from_fn_with_state(pool.clone(), auth::token::auth));
 
   let unprotected = Router::new()
@@ -97,6 +101,7 @@ async fn main() {
     .typed_post(routes::create_user)
     .typed_post(routes::login)
     .typed_post(routes::refresh_token)
+    .typed_get(routes::get_album_share_link)
     .typed_get(routes::system_info_public);
 
   let mixed_auth = Router::new()
