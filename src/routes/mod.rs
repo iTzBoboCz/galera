@@ -802,68 +802,74 @@ pub async fn media_delete_description(
   Ok(StatusCode::OK)
 }
 
-// /// Returns a list of liked media.
-// #[openapi]
-// #[get("/media/liked")]
-// pub async fn get_media_liked_list(claims: Claims, conn: DbConn) -> Result<Json<Vec<MediaResponse>>, Status> {
-//   let liked = db::media::get_liked_media(&conn, claims.user_id).await;
+#[derive(TypedPath, Deserialize)]
+#[typed_path("/media/liked")]
+pub struct MediaLikedRoute;
 
-//   if liked.is_err() {
-//     return Err(Status::InternalServerError)
-//   }
+/// Returns a list of liked media.
+pub async fn get_media_liked_list(
+  _: MediaLikedRoute,
+  State(pool): State<ConnectionPool>,
+  Extension(claims): Extension<Arc<Claims>>,
+) -> Result<Json<Vec<MediaResponse>>, StatusCode> {
+  let Ok(liked) = db::media::get_liked_media(pool.get().await.unwrap(), claims.user_id).await else {
+    return Err(StatusCode::INTERNAL_SERVER_ERROR)
+  };
 
-//   let result = liked.unwrap().iter()
-//     .map(MediaResponse::from)
-//     .collect::<Vec<MediaResponse>>();
+  let result = liked.iter()
+    .map(MediaResponse::from)
+    .collect::<Vec<MediaResponse>>();
 
-//   Ok(Json(result))
-// }
+  Ok(Json(result))
+}
 
-// /// Likes the media.
-// #[openapi]
-// #[post("/media/<media_uuid>/like")]
-// pub async fn media_like(claims: Claims, conn: DbConn, media_uuid: String) -> Result<Status, Status> {
-//   let media_id_option = db::media::select_media_id(&conn, media_uuid).await;
-//   if media_id_option.is_none() {
-//     return Err(Status::NotFound);
-//   }
+#[derive(TypedPath, Deserialize)]
+#[typed_path("/media/:media_uuid/like")]
+pub struct MediaUuidLikeRoute {
+  media_uuid: String,
+}
 
-//   let media_id = media_id_option.unwrap();
+/// Likes the media.
+pub async fn media_like(
+  MediaUuidLikeRoute { media_uuid }: MediaUuidLikeRoute,
+  State(pool): State<ConnectionPool>,
+  Extension(claims): Extension<Arc<Claims>>,
+) -> Result<StatusCode, StatusCode> {
+  let Some(media_id) = db::media::select_media_id(pool.get().await.unwrap(), media_uuid).await else {
+    return Err(StatusCode::NOT_FOUND);
+  };
 
-//   // It would be better to return result and have different responses for each error kind.
-//   // But it looks like that Diesel uses one error kind for multiple different errors and changes only the message.
-//   let changed_rows = db::media::media_like(&conn, media_id, claims.user_id).await;
-//   if changed_rows.is_ok() {
-//     return Ok(Status::Ok);
-//   }
+  // It would be better to return result and have different responses for each error kind.
+  // But it looks like that Diesel uses one error kind for multiple different errors and changes only the message.
+  let changed_rows = db::media::media_like(pool.get().await.unwrap(), media_id, claims.user_id).await;
+  if changed_rows.is_ok() {
+    return Ok(StatusCode::OK);
+  }
 
-//   error!("Inserting like failed: {}", changed_rows.unwrap_err());
-//   Err(Status::Conflict)
-// }
+  error!("Inserting like failed: {}", changed_rows.as_ref().unwrap_err());
+  Err(StatusCode::CONFLICT)
+}
 
-// /// Unlikes the media.
-// #[openapi]
-// #[delete("/media/<media_uuid>/like")]
-// pub async fn media_unlike(claims: Claims, conn: DbConn, media_uuid: String) -> Result<Status, Status> {
-//   let media_id_option = db::media::select_media_id(&conn, media_uuid).await;
-//   if media_id_option.is_none() {
-//     return Err(Status::NotFound);
-//   }
+/// Unlikes the media.
+pub async fn media_unlike(
+  MediaUuidLikeRoute { media_uuid }: MediaUuidLikeRoute,
+  State(pool): State<ConnectionPool>,
+  Extension(claims): Extension<Arc<Claims>>,
+) -> Result<StatusCode, StatusCode> {
+  let Some(media_id) = db::media::select_media_id(pool.get().await.unwrap(), media_uuid).await else {
+    return Err(StatusCode::NOT_FOUND);
+  };
 
-//   let media_id = media_id_option.unwrap();
+  let Ok(changed_rows) = db::media::media_unlike(pool.get().await.unwrap(), media_id, claims.user_id).await else {
+    return Err(StatusCode::INTERNAL_SERVER_ERROR);
+  };
 
-//   let r = db::media::media_unlike(&conn, media_id, claims.user_id).await;
+  if changed_rows == 0 {
+    return Ok(StatusCode::NO_CONTENT);
+  }
 
-//   if r.is_err() { return Ok(Status::InternalServerError) }
-
-//   let changed_rows = r.unwrap();
-
-//   if changed_rows == 0 {
-//     return Ok(Status::NoContent);
-//   }
-
-//   Ok(Status::Ok)
-// }
+  Ok(StatusCode::OK)
+}
 
 // #[derive(JsonSchema)
 #[derive(Serialize, Deserialize)]
