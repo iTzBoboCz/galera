@@ -192,15 +192,16 @@ pub struct AlbumInsertData {
   pub description: Option<String>,
 }
 
-// #[derive(Serialize, Deserialize, JsonSchema, Queryable)]
-// pub struct AlbumResponse {
-//   pub owner_id: i32,
-//   pub name: String,
-//   pub description: Option<String>,
-//   pub created_at: NaiveDateTime,
-//   pub thumbnail_link: Option<String>,
-//   pub link: String
-// }
+// #[derive(JsonSchema)]
+#[derive(Serialize, Deserialize, Queryable)]
+pub struct AlbumResponse {
+  pub owner_id: i32,
+  pub name: String,
+  pub description: Option<String>,
+  pub created_at: NaiveDateTime,
+  pub thumbnail_link: Option<String>,
+  pub link: String
+}
 
 impl From<Album> for AlbumResponse {
   fn from(album: Album) -> Self {
