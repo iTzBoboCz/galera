@@ -9,8 +9,8 @@ license = "GPL-3.0-only"
 
 [dependencies]
 # Web server
-axum = { version = "0.6.0-rc.5", features = ["headers"] }
-axum-extra = { version = "0.4.0-rc.3", features = ["typed-routing"] }
+axum = { version = "0.6.1", features = ["headers"] }
+axum-extra = { version = "0.4.1", features = ["typed-routing"] }
 
 # Database
 deadpool = { version = "0.9.3", features = ["rt_tokio_1", "serde", "async-trait", "managed" ] }
