@@ -100,8 +100,8 @@ impl Claims {
   }
 
   /// Checks whether the refresh token is expired or not.
-  pub async fn is_refresh_token_expired(&self, conn: DbConn) -> bool {
-    let refresh_token_exp = select_refresh_token_expiration(conn, self.refresh_token.clone()).await;
+  pub async fn is_refresh_token_expired(&self, mut conn: DbConn) -> bool {
+    let refresh_token_exp = select_refresh_token_expiration(&mut conn, self.refresh_token.clone()).await;
     if refresh_token_exp.is_none() {
       return true;
     }

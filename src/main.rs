@@ -13,17 +13,15 @@
 #[macro_use]
 extern crate diesel;
 
-#[macro_use]
-extern crate diesel_migrations;
-
 use axum_extra::routing::RouterExt;
-use diesel_migrations::embed_migrations;
+use diesel_migrations::{embed_migrations, EmbeddedMigrations};
 use tracing::{warn, info};
 use crate::auth::secret::Secret;
 use crate::directories::Directories;
 use axum::{response::{Html, IntoResponse}, routing::get, Router, http::Request, middleware::{Next, self}, extract::{MatchedPath, State}, body::Body};
 use deadpool_diesel::{Pool, Runtime, Manager};
 use diesel::{MysqlConnection};
+use diesel_migrations::MigrationHarness;
 use metrics_exporter_prometheus::{Matcher, PrometheusBuilder, PrometheusHandle};
 use std::{net::SocketAddr, time::Instant, future::ready};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -73,8 +71,8 @@ async fn main() {
 
   let pool = create_db_pool().await;
 
-  embed_migrations!();
-  pool.get().await.unwrap().interact(|c| embedded_migrations::run(c)).await.expect("Can't connect to the database.").expect("Can't run migrations.");
+  pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
+  let _ = pool.get().await.unwrap().interact(|c| c.run_pending_migrations(MIGRATIONS).map(|_| ())).await.expect("Can't run migrations.");
 
 
   let protected = Router::new()

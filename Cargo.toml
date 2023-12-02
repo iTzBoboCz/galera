@@ -13,10 +13,10 @@ axum = { version = "0.7.1" }
 axum-extra = { version = "0.9.0", features = ["typed-routing", "typed-header"] }
 
 # Database
-deadpool = { version = "0.9.3", features = ["rt_tokio_1", "serde", "async-trait", "managed" ] }
-deadpool-diesel = { version = "0.3.1", features = ["serde","rt_tokio_1"] }
-diesel = { version = "1.4.8", features = ["mysql", "chrono"] }
-diesel_migrations = "1.4.0"
+deadpool = { version = "0.10.0", features = ["rt_tokio_1", "serde", "async-trait", "managed" ] }
+deadpool-diesel = { version = "0.5.0", features = ["serde","rt_tokio_1"] }
+diesel = { version = "2.1.4", features = ["mysql", "chrono"] }
+diesel_migrations = "2.1.0"
 
 # Logging
 metrics = "0.18"

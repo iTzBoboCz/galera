@@ -40,7 +40,7 @@ pub async fn select_refresh_token_id(conn: DbConn, refresh_token: String) -> Opt
 }
 
 /// Selects expiration time from a given refresh token.
-pub async fn select_refresh_token_expiration(conn: DbConn, refresh_token: String) -> Option<NaiveDateTime> {
+pub async fn select_refresh_token_expiration(conn: &mut DbConn, refresh_token: String) -> Option<NaiveDateTime> {
   conn.interact(move |c| {
     auth_refresh_token::table
       .select(auth_refresh_token::expiration_time)
