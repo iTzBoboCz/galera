@@ -1,6 +1,6 @@
 use crate::{db, ConnectionPool};
 use crate::models::{Folder, NewFolder};
-use crate::DbConn;
+
 use futures::executor;
 use tracing::{error, info, warn, trace, debug};
 use std::fs;

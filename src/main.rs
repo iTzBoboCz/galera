@@ -18,7 +18,7 @@ use diesel_migrations::{embed_migrations, EmbeddedMigrations};
 use tracing::{warn, info};
 use crate::auth::secret::Secret;
 use crate::directories::Directories;
-use axum::{response::{Html, IntoResponse}, routing::get, Router, http::Request, middleware::{Next, self}, extract::{MatchedPath, State}, body::Body};
+use axum::{response::{Html, IntoResponse}, routing::get, Router, http::Request, middleware::{Next, self}, extract::{MatchedPath}, body::Body};
 use deadpool_diesel::{Pool, Runtime, Manager};
 use diesel::{MysqlConnection};
 use diesel_migrations::MigrationHarness;

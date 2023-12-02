@@ -276,7 +276,7 @@ pub async fn auth(State(pool): State<ConnectionPool>, TypedHeader(Authorization(
 
 use super::shared_album_link::shared_album_link;
 
-pub async fn mixed_auth(State(pool): State<ConnectionPool>, bearer: Option<TypedHeader<Authorization<authorization::Bearer>>>, special_auth: Option<TypedHeader<Authorization<authorization::Basic>>>, mut req: Request<Body>, next: Next) -> Result<Response, StatusCode> {
+pub async fn mixed_auth(State(pool): State<ConnectionPool>, bearer: Option<TypedHeader<Authorization<authorization::Bearer>>>, special_auth: Option<TypedHeader<Authorization<authorization::Basic>>>, req: Request<Body>, next: Next) -> Result<Response, StatusCode> {
   if let Some(bearer) = bearer {
     if let Ok(result) = auth(State(pool), bearer, req, next).await {
       return Ok(result);
