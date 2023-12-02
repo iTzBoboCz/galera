@@ -8,7 +8,8 @@ use crate::{db::{self, tokens::{insert_access_token, insert_refresh_token, selec
 use crate::DbConn;
 use crate::auth::secret::Secret;
 use anyhow::{self, Context};
-use axum::{http::{StatusCode,Request}, extract::{State, TypedHeader}, response::Response, middleware::Next, headers::{Authorization, authorization}};
+use axum::{http::{StatusCode,Request}, extract::State, response::Response, middleware::Next, body::Body};
+use axum_extra::{TypedHeader, headers::{Authorization, authorization}};
 
 /// Bearer token\
 /// used as a Request guard
@@ -248,7 +249,7 @@ impl Claims {
 }
 
 /// Auth middleware.
-pub async fn auth<B>(State(pool): State<ConnectionPool>, TypedHeader(Authorization(bearer)): TypedHeader<Authorization<authorization::Bearer>>, mut req: Request<B>, next: Next<B>) -> Result<Response, StatusCode> {
+pub async fn auth(State(pool): State<ConnectionPool>, TypedHeader(Authorization(bearer)): TypedHeader<Authorization<authorization::Bearer>>, mut req: Request<Body>, next: Next) -> Result<Response, StatusCode> {
   let bearer_token_decoded = Claims::try_from(bearer.token());
 
   if let Ok(claims) = bearer_token_decoded {
@@ -275,7 +276,7 @@ pub async fn auth<B>(State(pool): State<ConnectionPool>, TypedHeader(Authorizati
 
 use super::shared_album_link::shared_album_link;
 
-pub async fn mixed_auth<B>(State(pool): State<ConnectionPool>, bearer: Option<TypedHeader<Authorization<authorization::Bearer>>>, special_auth: Option<TypedHeader<Authorization<authorization::Basic>>>, mut req: Request<B>, next: Next<B>) -> Result<Response, StatusCode> {
+pub async fn mixed_auth(State(pool): State<ConnectionPool>, bearer: Option<TypedHeader<Authorization<authorization::Bearer>>>, special_auth: Option<TypedHeader<Authorization<authorization::Basic>>>, mut req: Request<Body>, next: Next) -> Result<Response, StatusCode> {
   if let Some(bearer) = bearer {
     if let Ok(result) = auth(State(pool), bearer, req, next).await {
       return Ok(result);

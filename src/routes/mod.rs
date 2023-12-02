@@ -6,7 +6,7 @@ use crate::db::{self, users::get_user_by_id};
 use crate::directories::Directories;
 use crate::models::{Album, AlbumShareLink, Folder, Media, NewAlbum, NewAlbumMedia, NewAlbumShareLink, NewUser};
 use axum::Extension;
-use axum::body::{Body, StreamBody};
+use axum::body::Body;
 use axum::extract::{State, RawQuery};
 use axum::http::Request;
 use axum::{Json, http::StatusCode};
@@ -717,7 +717,7 @@ pub async fn get_media_by_uuid(
   MediaUuidRoute { media_uuid }: MediaUuidRoute,
   State(pool): State<ConnectionPool>,
   request: Request<Body>
-) -> Result<StreamBody<ReaderStream<tokio::fs::File>>, StatusCode> {
+) -> Result<Body, StatusCode> {
   let Ok(media) = pool.get().await.unwrap().interact(|c| {
     media::table
       .select(media::table::all_columns())
@@ -768,7 +768,7 @@ pub async fn get_media_by_uuid(
   // convert the `AsyncRead` into a `Stream`
   let stream = ReaderStream::new(file);
   // convert the `Stream` into an `axum::body::HttpBody`
-  Ok(StreamBody::new(stream))
+  Ok(Body::from_stream(stream))
 }
 
 // #[derive(JsonSchema)]

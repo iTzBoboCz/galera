@@ -21,7 +21,7 @@ use diesel_migrations::embed_migrations;
 use tracing::{warn, info};
 use crate::auth::secret::Secret;
 use crate::directories::Directories;
-use axum::{response::{Html, IntoResponse}, routing::get, Router, http::Request, middleware::{Next, self}, extract::{MatchedPath, State}};
+use axum::{response::{Html, IntoResponse}, routing::get, Router, http::Request, middleware::{Next, self}, extract::{MatchedPath, State}, body::Body};
 use deadpool_diesel::{Pool, Runtime, Manager};
 use diesel::{MysqlConnection};
 use metrics_exporter_prometheus::{Matcher, PrometheusBuilder, PrometheusHandle};
@@ -121,10 +121,8 @@ async fn main() {
   // run it
   let addr = SocketAddr::from(([127, 0, 0, 1], 8000));
   println!("listening on {}", addr);
-  axum::Server::bind(&addr)
-    .serve(app.into_make_service())
-    .await
-    .unwrap();
+  let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+  axum::serve(listener, app).await.unwrap();
 }
 
 async fn handler() -> Html<&'static str> {
@@ -146,7 +144,7 @@ fn setup_metrics_recorder() -> PrometheusHandle {
     .unwrap()
 }
 
-async fn track_metrics<B>(req: Request<B>, next: Next<B>) -> impl IntoResponse {
+async fn track_metrics(req: Request<Body>, next: Next) -> impl IntoResponse {
     let start = Instant::now();
     let path = if let Some(matched_path) = req.extensions().get::<MatchedPath>() {
         matched_path.as_str().to_owned()
