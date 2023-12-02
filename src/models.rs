@@ -10,7 +10,7 @@ use sha2::Digest;
 
 #[allow(non_camel_case_types)]
 #[derive(Identifiable, Queryable)]
-#[table_name = "user"]
+#[diesel(table_name = user)]
 pub struct User {
   pub id: i32,
   pub username: String,
@@ -21,7 +21,7 @@ pub struct User {
 /// Struct for inserting new users.
 // #[derive(FromForm, JsonSchema)]
 #[derive(Insertable, Deserialize, Clone)]
-#[table_name = "user"]
+#[diesel(table_name = user)]
 pub struct NewUser {
   pub username: String,
   pub email: String,
@@ -91,9 +91,9 @@ impl NewUser {
 
 #[allow(non_camel_case_types)]
 #[derive(Identifiable, Queryable, Associations, Debug, Clone)]
-#[table_name = "folder"]
-#[belongs_to(User, foreign_key = "owner_id")]
-#[belongs_to(Folder, foreign_key = "parent")]
+#[diesel(table_name = folder)]
+#[diesel(belongs_to(User, foreign_key = owner_id))]
+#[diesel(belongs_to(Folder, foreign_key = parent))]
 pub struct Folder {
   pub id: i32,
   pub owner_id: i32,
@@ -103,7 +103,7 @@ pub struct Folder {
 
 /// Struct for inserting new folders.
 #[derive(Insertable)]
-#[table_name = "folder"]
+#[diesel(table_name = folder)]
 pub struct NewFolder {
   pub owner_id: i32,
   pub parent: Option<i32>,
@@ -119,8 +119,8 @@ impl NewFolder {
 #[allow(non_camel_case_types)]
 // #[derive(JsonSchema)]
 #[derive(Identifiable, Queryable, Associations, Serialize)]
-#[table_name = "album"]
-#[belongs_to(User, foreign_key = "owner_id")]
+#[diesel(table_name = album)]
+#[diesel(belongs_to(User, foreign_key = owner_id))]
 pub struct Album {
   pub id: i32,
   pub owner_id: i32,
@@ -135,7 +135,7 @@ pub struct Album {
 /// Struct for inserting new albums.
 // #[derive(JsonSchema)]
 #[derive(Insertable, Deserialize, Clone)]
-#[table_name = "album"]
+#[diesel(table_name = album)]
 pub struct NewAlbum {
   pub owner_id: i32,
   pub name: String,
@@ -157,9 +157,9 @@ impl NewAlbum {
 
 #[allow(non_camel_case_types)]
 #[derive(Identifiable, Queryable, Associations)]
-#[table_name = "album_invite"]
-#[belongs_to(Album, foreign_key = "album_id")]
-#[belongs_to(User, foreign_key = "invited_user_id")]
+#[diesel(table_name = album_invite)]
+#[diesel(belongs_to(Album, foreign_key = album_id))]
+#[diesel(belongs_to(User, foreign_key = invited_user_id))]
 pub struct Album_invite {
   pub id: i32,
   pub album_id: i32,
@@ -170,8 +170,8 @@ pub struct Album_invite {
 
 #[allow(non_camel_case_types)]
 #[derive(Identifiable, Queryable, Associations)]
-#[table_name = "album_share_link"]
-#[belongs_to(Album, foreign_key = "album_id")]
+#[diesel(table_name = album_share_link)]
+#[diesel(belongs_to(Album, foreign_key = album_id))]
 pub struct AlbumShareLink {
   pub id: i32,
   pub album_id: i32,
@@ -182,7 +182,7 @@ pub struct AlbumShareLink {
 
 #[allow(non_camel_case_types)]
 #[derive(Insertable, Clone)]
-#[table_name = "album_share_link"]
+#[diesel(table_name = album_share_link)]
 pub struct NewAlbumShareLink {
   pub album_id: i32,
   pub uuid: String,
@@ -200,9 +200,9 @@ impl NewAlbumShareLink {
 
 #[allow(non_camel_case_types)]
 #[derive(Identifiable, Queryable, Associations)]
-#[table_name = "album_media"]
-#[belongs_to(Album, foreign_key = "album_id")]
-#[belongs_to(Media, foreign_key = "media_id")]
+#[diesel(table_name = album_media)]
+#[diesel(belongs_to(Album, foreign_key = album_id))]
+#[diesel(belongs_to(Media, foreign_key = media_id))]
 pub struct AlbumMedia {
   pub id: i32,
   pub album_id: i32,
@@ -211,18 +211,17 @@ pub struct AlbumMedia {
 
 // #[derive(JsonSchema)]
 #[derive(Insertable, Deserialize)]
-#[table_name = "album_media"]
+#[diesel(table_name = album_media)]
 pub struct NewAlbumMedia {
   pub album_id: i32,
   pub media_id: i32
 }
 
-//#[table_name = "posts"]
 #[allow(non_camel_case_types)]
 #[derive(Identifiable, Queryable, Associations)]
-#[table_name = "media"]
-#[belongs_to(Folder, foreign_key = "folder_id")]
-#[belongs_to(User, foreign_key = "owner_id")]
+#[diesel(table_name = media)]
+#[diesel(belongs_to(Folder, foreign_key = folder_id))]
+#[diesel(belongs_to(User, foreign_key = owner_id))]
 pub struct Media {
   pub id: i32,
   pub filename: String,
@@ -238,7 +237,7 @@ pub struct Media {
 
 /// struct for inserting new media
 #[derive(Insertable)]
-#[table_name = "media"]
+#[diesel(table_name = media)]
 pub struct NewMedia {
   pub filename: String,
   pub folder_id: i32,
@@ -269,9 +268,9 @@ impl NewMedia {
 
 #[allow(non_camel_case_types)]
 #[derive(Identifiable, Queryable, Associations)]
-#[table_name = "favorite_media"]
-#[belongs_to(Media, foreign_key = "media_id")]
-#[belongs_to(User, foreign_key = "user_id")]
+#[diesel(table_name = favorite_media)]
+#[diesel(belongs_to(Media, foreign_key = media_id))]
+#[diesel(belongs_to(User, foreign_key = user_id))]
 pub struct FavoriteMedia {
   pub id: i32,
   pub media_id: i32,
@@ -280,7 +279,7 @@ pub struct FavoriteMedia {
 
 /// struct for inserting likes.
 #[derive(Insertable)]
-#[table_name = "favorite_media"]
+#[diesel(table_name = favorite_media)]
 pub struct NewFavoriteMedia {
   pub media_id: i32,
   pub user_id: i32,
@@ -297,8 +296,8 @@ impl NewFavoriteMedia {
 
 #[allow(non_camel_case_types)]
 #[derive(Identifiable, Queryable, Associations)]
-#[table_name = "auth_refresh_token"]
-#[belongs_to(User, foreign_key = "user_id")]
+#[diesel(table_name = auth_refresh_token)]
+#[diesel(belongs_to(User, foreign_key = user_id))]
 pub struct AuthRefreshToken {
   pub id: i32,
   pub user_id: i32,
@@ -308,7 +307,7 @@ pub struct AuthRefreshToken {
 
 /// struct for inserting refresh tokens.
 #[derive(Insertable)]
-#[table_name = "auth_refresh_token"]
+#[diesel(table_name = auth_refresh_token)]
 pub struct NewAuthRefreshToken {
   pub user_id: i32,
   pub refresh_token: String,
@@ -327,8 +326,8 @@ impl NewAuthRefreshToken {
 
 #[allow(non_camel_case_types)]
 #[derive(Identifiable, Queryable, Associations)]
-#[table_name = "auth_access_token"]
-#[belongs_to(AuthRefreshToken, foreign_key = "refresh_token_id")]
+#[diesel(table_name = auth_access_token)]
+#[diesel(belongs_to(AuthRefreshToken, foreign_key = refresh_token_id))]
 pub struct AuthAccessToken {
   pub id: i32,
   pub refresh_token_id: i32,
@@ -338,7 +337,7 @@ pub struct AuthAccessToken {
 
 /// struct for inserting access tokens.
 #[derive(Insertable)]
-#[table_name = "auth_access_token"]
+#[diesel(table_name = auth_access_token)]
 pub struct NewAuthAccessToken {
   pub refresh_token_id: i32,
   pub access_token: String,

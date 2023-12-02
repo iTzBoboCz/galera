@@ -1,5 +1,7 @@
 // @generated automatically by Diesel CLI.
 
+#![allow(unused_qualifications)]
+
 diesel::table! {
   album (id) {
     id -> Integer,

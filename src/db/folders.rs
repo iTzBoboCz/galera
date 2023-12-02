@@ -10,7 +10,7 @@ use diesel::Table;
 use std::path::PathBuf;
 
 pub async fn insert_folder(conn: DbConn, new_folder: NewFolder, name: String, path: PathBuf) {
-  conn.interact(move |c| {
+  let _ = conn.interact(move |c| {
     diesel::insert_into(folder::table)
       .values(new_folder)
       .execute(c)
