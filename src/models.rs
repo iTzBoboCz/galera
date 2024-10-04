@@ -7,6 +7,7 @@ use nanoid::nanoid;
 // use rocket::form::FromForm;
 use serde::{Serialize, Deserialize};
 use sha2::Digest;
+use utoipa::{ToSchema, IntoParams};
 
 #[allow(non_camel_case_types)]
 #[derive(Identifiable, Queryable)]
@@ -20,7 +21,7 @@ pub struct User {
 
 /// Struct for inserting new users.
 // #[derive(FromForm, JsonSchema)]
-#[derive(Insertable, Deserialize, Clone)]
+#[derive(Insertable, Deserialize, Serialize, Clone, ToSchema)]
 #[diesel(table_name = user)]
 pub struct NewUser {
   pub username: String,

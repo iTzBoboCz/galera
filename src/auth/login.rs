@@ -1,6 +1,7 @@
 use crate::{db::users::{check_user_login_email, check_user_login_username}, models::User, ConnectionPool};
 use serde::{Serialize, Deserialize};
 use sha2::Digest;
+use utoipa::ToResponse;
 use super::token::{Claims, ClaimsEncoded};
 
 /// Used for receiving login data.
@@ -80,7 +81,7 @@ impl From<User> for UserInfo {
 
 /// Response when logging in.
 // #[derive(JsonSchema)]
-#[derive(Serialize)]
+#[derive(Serialize, ToResponse)]
 pub struct LoginResponse {
   user_info: UserInfo,
   bearer_token: String,

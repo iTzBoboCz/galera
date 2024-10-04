@@ -25,8 +25,9 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Openapi
-# rocket_okapi = { version = "0.8.0-rc.2", default-features = false, features = ["swagger"] }
-# okapi = { version = "0.7.0-rc.1" }
+utoipa = { version = "4.1.0", features = ["axum_extras"] }
+utoipa-swagger-ui = { version = "5.0.0", features = ["axum"] }
+utoipauto = "0.1.1"
 
 # Validation
 email_address = "0.2.4"

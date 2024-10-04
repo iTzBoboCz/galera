@@ -16,6 +16,9 @@ extern crate diesel;
 use axum_extra::routing::RouterExt;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
 use tracing::{warn, info};
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
+use utoipauto::utoipauto;
 use crate::auth::secret::Secret;
 use crate::directories::Directories;
 use axum::{response::{Html, IntoResponse}, routing::get, Router, http::Request, middleware::{Next, self}, extract::{MatchedPath}, body::Body};
@@ -95,7 +98,17 @@ async fn main() {
     .typed_get(routes::scan_media)
     .route_layer(middleware::from_fn_with_state(pool.clone(), auth::token::auth));
 
+    #[utoipauto(paths = "./src/routes/mod.rs, ./src/models.rs, ./src/auth/login.rs")]
+    #[derive(OpenApi)]
+    #[openapi(
+        tags(
+            (name = "todo", description = "Todo items management API")
+        )
+    )]
+    struct ApiDoc;
+
   let unprotected = Router::new()
+    .merge(SwaggerUi::new("/swagger-ui").url("/openapi.json", ApiDoc::openapi()))
     .route("/", get(handler))
     .route("/metrics", get(move || ready(recorder_handle.render())))
     .typed_post(routes::create_user)

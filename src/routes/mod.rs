@@ -12,6 +12,7 @@ use axum::http::Request;
 use axum::{Json, http::StatusCode};
 use axum_extra::routing::TypedPath;
 use tracing::{info, error};
+use utoipa::{ToResponse, ToSchema, IntoParams};
 use crate::scan;
 use crate::schema::media;
 use crate::{ConnectionPool};
@@ -36,6 +37,15 @@ use tokio_util::io::ReaderStream;
 #[typed_path("/user")]
 pub struct UserRoute;
 
+#[utoipa::path(
+  post,
+  path = "/user",
+  responses(
+    (status = 200, description = "A new user was created"),
+    (status = 409, description = "User with that username already exists.")
+  ),
+  request_body = NewUser
+)]
 /// Creates a new user
 pub async fn create_user(
   _: UserRoute,
@@ -59,6 +69,14 @@ pub async fn create_user(
 #[typed_path("/login")]
 pub struct LoginRoute;
 
+#[utoipa::path(
+  post,
+  path = "/login",
+  responses(
+    (status = 200, description = "", body = LoginResponse),
+  ),
+  request_body = UserLogin
+)]
 /// You must provide either a username or an email together with a password.
 pub async fn login(
   _: LoginRoute,
@@ -144,7 +162,8 @@ pub async fn refresh_token(
 }
 
 // #[derive(JsonSchema)]
-#[derive(Serialize, Deserialize, Queryable)]
+// #[derive(Serialize, Deserialize, Queryable, ToResponse, IntoParams)]
+#[derive(Serialize, Deserialize, Queryable, IntoParams)]
 pub struct MediaResponse {
   pub filename: String,
   pub owner_id: i32,
@@ -329,7 +348,7 @@ pub struct AlbumUpdateData {
   pub description: Option<String>,
 }
 
-#[derive(TypedPath, Deserialize)]
+#[derive(TypedPath, Deserialize, IntoParams)]
 #[typed_path("/album/:album_uuid/media")]
 pub struct AlbumUuidMediaRoute {
   album_uuid: String,
@@ -480,7 +499,7 @@ pub struct SharedAlbumLinkResponse {
 }
 
 
-#[derive(TypedPath, Deserialize)]
+#[derive(TypedPath, Deserialize, ToSchema)]
 #[typed_path("/album/:album_uuid/share/link")]
 pub struct AlbumUuidShareLinkRoute {
   album_uuid: String,
@@ -584,7 +603,7 @@ impl AlbumShareLinkBasic {
   }
 }
 
-#[derive(TypedPath, Deserialize)]
+#[derive(TypedPath, Deserialize, ToSchema)]
 #[typed_path("/album/share/link/:album_share_link_uuid")]
 pub struct AlbumShareLinkUuidRoute {
   album_share_link_uuid: String,
@@ -676,7 +695,7 @@ pub async fn delete_album_share_link(
   Ok(StatusCode::OK)
 }
 
-#[derive(TypedPath, Deserialize)]
+#[derive(TypedPath, ToSchema)]
 #[typed_path("/scan_media")]
 pub struct ScanMediaRoute;
 
@@ -700,13 +719,13 @@ pub async fn scan_media(
   Ok(StatusCode::OK)
 }
 
-#[derive(TypedPath, Deserialize)]
+#[derive(TypedPath, Deserialize, ToSchema)]
 #[typed_path("/album/:album_uuid")]
 pub struct AlbumUuidRoute {
   album_uuid: String,
 }
 
-#[derive(TypedPath, Deserialize)]
+#[derive(TypedPath, Deserialize, ToSchema)]
 #[typed_path("/media/:media_uuid")]
 pub struct MediaUuidRoute {
   media_uuid: String,
@@ -777,7 +796,7 @@ pub struct MediaDescription {
   description: Option<String>
 }
 
-#[derive(TypedPath, Deserialize)]
+#[derive(TypedPath, Deserialize, ToSchema)]
 #[typed_path("/media/:media_uuid/description")]
 pub struct MediaUuidDescriptionRoute {
   media_uuid: String,
@@ -835,7 +854,7 @@ pub async fn media_delete_description(
   Ok(StatusCode::OK)
 }
 
-#[derive(TypedPath, Deserialize)]
+#[derive(TypedPath, ToSchema)]
 #[typed_path("/media/liked")]
 pub struct MediaLikedRoute;
 
@@ -856,7 +875,7 @@ pub async fn get_media_liked_list(
   Ok(Json(result))
 }
 
-#[derive(TypedPath, Deserialize)]
+#[derive(TypedPath, Deserialize, ToSchema)]
 #[typed_path("/media/:media_uuid/like")]
 pub struct MediaUuidLikeRoute {
   media_uuid: String,
@@ -925,7 +944,7 @@ impl SystemInfoPublic {
   }
 }
 
-#[derive(TypedPath)]
+#[derive(TypedPath, ToSchema)]
 #[typed_path("/system/info/public")]
 pub struct SystemInfoPublicRoute;
 
