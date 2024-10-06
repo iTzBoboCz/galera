@@ -585,13 +585,42 @@ impl AlbumShareLinkBasic {
 }
 
 #[derive(TypedPath, Deserialize)]
-#[typed_path("/album/share/link/:album_share_link_uuid")]
+#[typed_path("/album/share/link/:album_share_link_link")]
+pub struct AlbumShareLinkRoute {
+  album_share_link_link: String,
+}
+
+/// Gets basic information about album share link from its link.
+pub async fn get_album_share_link(
+  AlbumShareLinkRoute { album_share_link_link }: AlbumShareLinkRoute,
+  State(pool): State<ConnectionPool>
+) -> Result<Json<AlbumShareLinkBasic>, StatusCode> {
+  let Ok(album_share_link_option) = db::albums::select_album_share_link_by_link(pool.get().await.unwrap(), album_share_link_link).await else {
+    return Err(StatusCode::INTERNAL_SERVER_ERROR);
+  };
+
+  let Some(album_share_link) = album_share_link_option else {
+    return Err(StatusCode::NOT_FOUND);
+  };
+
+  let album = db::albums::select_album(pool.get().await.unwrap(), album_share_link.album_id).await;
+  if album.is_none() { return Err(StatusCode::INTERNAL_SERVER_ERROR)  }
+
+  Ok(
+    Json(
+      AlbumShareLinkBasic::new(album_share_link, album.unwrap().link)
+    )
+  )
+}
+
+#[derive(TypedPath, Deserialize)]
+#[typed_path("/album/share/link/uuid/:album_share_link_uuid")]
 pub struct AlbumShareLinkUuidRoute {
   album_share_link_uuid: String,
 }
 
-/// Gets basic information about album share link.
-pub async fn get_album_share_link(
+/// Gets basic information about album share link from its uuid.
+pub async fn get_album_share_link_uuid(
   AlbumShareLinkUuidRoute { album_share_link_uuid }: AlbumShareLinkUuidRoute,
   State(pool): State<ConnectionPool>
 ) -> Result<Json<AlbumShareLinkBasic>, StatusCode> {

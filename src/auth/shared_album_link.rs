@@ -2,13 +2,13 @@ use axum::{extract::State, middleware::Next, http::{StatusCode, Request}, respon
 use axum_extra::{TypedHeader, headers::{Authorization, authorization}};
 use serde::{Serialize, Deserialize};
 use sha2::Digest;
-use crate::{db::{albums::{select_album, select_album_share_link_by_uuid}}, ConnectionPool};
+use crate::{db::{albums::{select_album, select_album_share_link_by_link}}, ConnectionPool};
 use std::{str, sync::Arc};
 
 // #[derive(JsonSchema)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SharedAlbumLinkSecurity {
-  album_share_link_uuid: String,
+  album_share_link_link: String,
   password: Option<String>,
 }
 
@@ -23,14 +23,14 @@ pub fn hash_password(password: String) -> String {
 
 /// Implements Request guard for SharedAlbumLinkSecurity.
 pub async fn shared_album_link(State(pool): State<ConnectionPool>, TypedHeader(Authorization(special_auth)): TypedHeader<Authorization<authorization::Basic>>, mut req: Request<Body>, next: Next) -> Result<Response, StatusCode> {
-  let album_share_link_uuid = special_auth.username().to_string();
+  let album_share_link_link = special_auth.username().to_string();
   let password = special_auth.password().to_string();
   let hashed_password =  match password.len() {
     0 => None,
     _ => Some(hash_password(password))
   };
 
-  let Ok(album_share_link_option) = select_album_share_link_by_uuid(pool.get().await.unwrap(), album_share_link_uuid).await else {
+  let Ok(album_share_link_option) = select_album_share_link_by_link(pool.get().await.unwrap(), album_share_link_link).await else {
     return Err(StatusCode::INTERNAL_SERVER_ERROR);
   };
 
@@ -43,7 +43,7 @@ pub async fn shared_album_link(State(pool): State<ConnectionPool>, TypedHeader(A
     return Err(StatusCode::UNAUTHORIZED);
   };
 
-  let album_share_link_security = SharedAlbumLinkSecurity { album_share_link_uuid: album.link, password: hashed_password };
+  let album_share_link_security = SharedAlbumLinkSecurity { album_share_link_link: album.link, password: hashed_password };
 
   if album_share_link_security.password != album_share_link.password { return Err(StatusCode::UNAUTHORIZED) }
 
@@ -66,7 +66,7 @@ pub async fn shared_album_link(State(pool): State<ConnectionPool>, TypedHeader(A
 //     // The scheme for the security needs to be defined as well
 //     // https://swagger.io/docs/specification/authentication/basic-authentication/
 //     let security_scheme = SecurityScheme {
-//       description: Some("requires a base64 encoded string in format `album_share_link_uuid:password` to access".into()),
+//       description: Some("requires a base64 encoded string in format `album_share_link_link:password` to access".into()),
 //       // this will show where and under which name the value will be found in the HTTP header
 //       // in this case, the header key x-api-key will be searched
 //       // other alternatives are "query", "cookie" according to the openapi specs.

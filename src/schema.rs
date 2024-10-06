@@ -41,9 +41,11 @@ diesel::table! {
 diesel::table! {
   album_share_link (id) {
     id -> Integer,
+    #[max_length = 36]
+    uuid -> Char,
     album_id -> Integer,
     #[max_length = 21]
-    uuid -> Varchar,
+    link -> Varchar,
     #[max_length = 128]
     password -> Nullable<Varchar>,
     expiration -> Nullable<Datetime>,

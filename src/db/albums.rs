@@ -164,6 +164,16 @@ pub async fn select_album_share_links(conn: DbConn, album_id: i32) -> Result<Vec
   }).await.unwrap()
 }
 
+pub async fn select_album_share_link_by_link(conn: DbConn, album_share_link_link: String) -> Result<Option<AlbumShareLink>, diesel::result::Error> {
+  conn.interact(move |c| {
+    album_share_link::table
+      .select(album_share_link::table::all_columns())
+      .filter(album_share_link::dsl::link.eq(album_share_link_link))
+      .first::<AlbumShareLink>(c)
+      .optional()
+  }).await.unwrap()
+}
+
 pub async fn select_album_share_link_by_uuid(conn: DbConn, album_share_link_uuid: String) -> Result<Option<AlbumShareLink>, diesel::result::Error> {
   conn.interact(move |c| {
     album_share_link::table
