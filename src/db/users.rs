@@ -102,6 +102,18 @@ pub async fn get_user_by_id(conn: DbConn, user_id: i32) -> Option<User> {
   }).await.unwrap()
 }
 
+/// Tries to select a user by its ID.
+pub async fn get_user_by_uuid(conn: DbConn, user_uuid: String) -> Option<User> {
+  conn.interact(move |c| {
+    user::table
+      .select(user::table::all_columns())
+      .filter(user::uuid.eq(user_uuid))
+      .first::<User>(c)
+      .optional()
+      .unwrap()
+  }).await.unwrap()
+}
+
 /// Tries to select a user ID from a given email.
 pub async fn get_user_id_email(conn: DbConn, email: String) -> Option<i32> {
   conn.interact(move |c| {
