@@ -1,20 +1,27 @@
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use crate::auth::login::{UserLogin, UserInfo, LoginResponse};
 use crate::auth::shared_album_link::{SharedAlbumLinkSecurity, hash_password};
 use crate::auth::token::{Claims, ClaimsEncoded};
 use crate::db::{self, users::get_user_by_id};
 use crate::directories::Directories;
-use crate::models::{Album, AlbumShareLink, Folder, Media, NewAlbumMedia, NewAlbumShareLink, NewUser};
+use crate::models::{Album, AlbumShareLink, Folder, InsertUser, Media, NewAlbum, NewAlbumMedia, NewAlbumShareLink, NewUser, User};
+use axum::response::IntoResponse;
 use axum::Extension;
 use axum::body::Body;
-use axum::extract::{State};
+use axum::extract::State;
 use axum::http::Request;
 use axum::{Json, http::StatusCode};
+use axum_extra::headers::Host;
 use axum_extra::routing::TypedPath;
+use axum_extra::TypedHeader;
 use tracing::{info, error};
+use uuid::Uuid;
+use webauthn_rs::prelude::{PasskeyRegistration, Url};
+use webauthn_rs::{Webauthn, WebauthnBuilder};
 use crate::scan;
 use crate::schema::media;
-use crate::{ConnectionPool};
+use crate::ConnectionPool;
 use chrono::{NaiveDateTime, Utc};
 use diesel::ExpressionMethods;
 
@@ -42,17 +49,111 @@ pub async fn create_user(
   State(pool): State<ConnectionPool>,
   Json(user): Json<NewUser>,
 ) -> Result<StatusCode, StatusCode> {
+  error!("gahaha");
   if !user.check() { return Err(StatusCode::UNPROCESSABLE_ENTITY) }
+  error!("gahaha");
 
   // TODO: investigate passing pool vs connection as parameter
   if !db::users::is_user_unique(pool.get().await.unwrap(), user.clone()).await { return Err(StatusCode::CONFLICT); };
 
-  let new_user = user.hash_password();
+  let new_user = InsertUser::from(user.hash_password());
   let result = db::users::insert_user(pool.get().await.unwrap(), new_user.clone()).await;
   if result == 0 { return Err(StatusCode::INTERNAL_SERVER_ERROR) }
 
   info!("A new user was created with name {}", new_user.username);
   Ok(StatusCode::OK)
+}
+
+fn is_localhost(host: String) -> bool {
+  host == "localhost" || host.starts_with("127.") || host.starts_with("[::1]")
+}
+
+async fn dynamic_webauthn_setup(host: String) -> Result<Webauthn, StatusCode> {
+  error!("{}", host);
+    let rp_url = if is_localhost(host.clone()) {
+        Url::parse("http://localhost")
+    } else {
+        Url::parse(&format!("https://{}", host))
+    }
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    WebauthnBuilder::new("localhost", &rp_url)
+      .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+      .build()
+      .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+#[derive(TypedPath)]
+#[typed_path("/user/webauthn/start")]
+pub struct UserWebauthnStartRoute;
+
+// Response for WebAuthn registration challenge
+#[derive(Serialize, Deserialize)]
+struct UserWebauthnStartResponse {
+  challenge: String,
+  rp: RelyingPartyInfo,
+  user: WebAuthnUser,
+  pub_key_cred_params: Vec<PublicKeyCredentialParam>,
+  timeout: u64,
+  authenticator_selection: AuthenticatorSelectionCriteria,
+}
+
+#[derive(Serialize, Deserialize)]
+struct RelyingPartyInfo {
+  name: String,
+  id: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct WebAuthnUser {
+  id: String,
+  name: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct PublicKeyCredentialParam {
+  alg: i32,
+  type_: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct AuthenticatorSelectionCriteria {
+  authenticator_attachment: Option<String>,
+}
+
+#[derive(Clone)]
+pub struct WebauthnSession {
+  user_id: i32,
+  reg_state: PasskeyRegistration
+}
+
+// HashMap<uuid, webauthn_session>
+pub type WebauthnStore = Arc<Mutex<HashMap<String, WebauthnSession>>>;
+
+pub async fn webauthn_start_user(
+  _: UserWebauthnStartRoute,
+  State(pool): State<ConnectionPool>,
+  TypedHeader(host): TypedHeader<Host>,
+  Extension(claims): Extension<Arc<Claims>>,
+  Extension(webauthn_sessions): Extension<WebauthnStore>,
+  // FIX: wait for https://github.com/tokio-rs/axum/pull/2507
+  // TypedHeader(forwarded): TypedHeader<Forwarded>
+) -> Result<impl IntoResponse, StatusCode> {
+  info!("test");
+  let webauthn = dynamic_webauthn_setup(host.hostname().to_owned()).await?;
+
+  let Some(User { uuid, username, .. }) = get_user_by_id(pool.get().await.unwrap(), claims.user_id).await else {
+    return Err(StatusCode::INTERNAL_SERVER_ERROR);
+  };
+
+  let webauthn_uuid = Uuid::new_v4().to_string();
+  let (ccr, reg_state) = webauthn.start_passkey_registration(Uuid::parse_str(&uuid).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?, &username, "", None)
+  .map_err(|_|StatusCode::INTERNAL_SERVER_ERROR)?;
+
+  let mut sessions = webauthn_sessions.lock().unwrap();  // Lock the mutex to access the HashMap
+  sessions.insert(webauthn_uuid.clone(), WebauthnSession { user_id: claims.user_id, reg_state });
+
+  Ok(Json(ccr))
 }
 
 #[derive(TypedPath)]
@@ -146,24 +247,24 @@ pub async fn refresh_token(
 // #[derive(JsonSchema)]
 #[derive(Serialize, Deserialize, Queryable)]
 pub struct MediaResponse {
+  pub uuid: String,
   pub filename: String,
   pub owner_id: i32,
   pub width: u32,
   pub height: u32,
   pub description: Option<String>,
   pub date_taken: NaiveDateTime,
-  pub uuid: String,
 }
 
 impl From<Media> for MediaResponse {
   fn from(media: Media) -> Self {
-    MediaResponse { filename: media.filename, owner_id: media.owner_id, width: media.width, height: media.height, description: media.description, date_taken: media.date_taken, uuid: media.uuid }
+    MediaResponse { uuid: media.uuid, filename: media.filename, owner_id: media.owner_id, width: media.width, height: media.height, description: media.description, date_taken: media.date_taken }
   }
 }
 
 impl From<&Media> for MediaResponse {
   fn from(media: &Media) -> Self {
-    MediaResponse { filename: media.filename.clone(), owner_id: media.owner_id, width: media.width, height: media.height, description: media.description.clone(), date_taken: media.date_taken, uuid: media.uuid.clone() }
+    MediaResponse { uuid: media.uuid.clone(), filename: media.filename.clone(), owner_id: media.owner_id, width: media.width, height: media.height, description: media.description.clone(), date_taken: media.date_taken }
   }
 }
 
@@ -200,18 +301,17 @@ pub struct AlbumResponse {
   pub description: Option<String>,
   pub created_at: NaiveDateTime,
   pub thumbnail_link: Option<String>,
-  pub link: String
 }
 
 impl From<Album> for AlbumResponse {
   fn from(album: Album) -> Self {
-    AlbumResponse { owner_id: album.owner_id, name: album.name, description: album.description, created_at: album.created_at, thumbnail_link: album.thumbnail_link, link: album.link }
+    AlbumResponse { owner_id: album.owner_id, name: album.name, description: album.description, created_at: album.created_at, thumbnail_link: album.thumbnail_link }
   }
 }
 
 impl From<&Album> for AlbumResponse {
   fn from(album: &Album) -> Self {
-    AlbumResponse { owner_id: album.owner_id, name: album.name.clone(), description: album.description.clone(), created_at: album.created_at, thumbnail_link: album.thumbnail_link.clone(), link: album.link.clone() }
+    AlbumResponse { owner_id: album.owner_id, name: album.name.clone(), description: album.description.clone(), created_at: album.created_at, thumbnail_link: album.thumbnail_link.clone() }
   }
 }
 
@@ -233,18 +333,18 @@ pub async fn create_album(
   Extension(claims): Extension<Arc<Claims>>,
   Json(album_insert_data): Json<AlbumInsertData>
 ) -> Json<Option<AlbumResponse>> {
-  db::albums::insert_album(pool.get().await.unwrap(), claims.user_id, album_insert_data).await;
+  let new_album = NewAlbum::new(claims.user_id, album_insert_data.name, album_insert_data.description, None);
+  db::albums::insert_album(pool.get().await.unwrap(), new_album.clone()).await;
 
-  let Some(last_insert_id) = db::general::get_last_insert_id(pool.get().await.unwrap()).await else {
-    error!("Last insert id was not returned. This may happen if restarting MySQL during scanning.");
-    return Json(None);
+  let Some(album_id) = db::albums::select_album_id(pool.get().await.unwrap(), new_album.uuid).await else {
+    return Json(None)
   };
 
-  let accessible = db::albums::user_has_album_access(pool.get().await.unwrap(), claims.user_id, last_insert_id).await;
+  let accessible = db::albums::user_has_album_access(pool.get().await.unwrap(), claims.user_id, album_id).await;
   if accessible.is_err() || !accessible.unwrap() { return Json(None); }
 
   // TODO: impl from u jiné struktury bez ID a hesla
-  let Some(album) = db::albums::select_album(pool.get().await.unwrap(), last_insert_id).await else {
+  let Some(album) = db::albums::select_album(pool.get().await.unwrap(), album_id).await else {
     return Json(None);
   };
 
@@ -294,6 +394,7 @@ pub async fn album_add_media(
     if has_media.unwrap() { continue; }
 
     transformed.push(NewAlbumMedia {
+      uuid: Uuid::new_v4().to_string(),
       album_id: album_id.unwrap(),
       media_id: media_id.unwrap()
     })
@@ -476,6 +577,7 @@ impl AlbumShareLinkInsert {
 #[derive(Serialize, Deserialize)]
 pub struct SharedAlbumLinkResponse {
   uuid: String,
+  link: String,
   expiration: Option<NaiveDateTime>,
 }
 
@@ -525,6 +627,7 @@ pub async fn create_album_share_link(
     Json(
       SharedAlbumLinkResponse {
         uuid: album_share_link.uuid,
+        link: album_share_link.link,
         expiration: album_share_link.expiration
       }
     )
@@ -533,7 +636,7 @@ pub async fn create_album_share_link(
 
 impl From<&AlbumShareLink> for SharedAlbumLinkResponse {
   fn from(album_share_link: &AlbumShareLink) -> Self {
-    Self { uuid: album_share_link.uuid.clone(), expiration: album_share_link.expiration }
+    Self { uuid: album_share_link.uuid.clone(), link: album_share_link.link.clone(), expiration: album_share_link.expiration }
   }
 }
 
@@ -573,13 +676,13 @@ pub struct AlbumShareLinkBasic {
 }
 
 impl AlbumShareLinkBasic {
-  pub fn new(album_share_link: AlbumShareLink, album_uuid: String) -> Self {
+  pub fn new(AlbumShareLink { expiration, password, .. }: AlbumShareLink, album_uuid: String) -> Self {
     let current_time = NaiveDateTime::from_timestamp(Utc::now().timestamp(), 0);
 
     Self {
       album_uuid,
-      is_expired: album_share_link.expiration.is_some() && album_share_link.expiration.unwrap() < current_time,
-      is_password_protected: album_share_link.password.is_some()
+      is_expired: expiration.is_some() && expiration.unwrap() < current_time,
+      is_password_protected: password.is_some()
      }
   }
 }
@@ -603,12 +706,13 @@ pub async fn get_album_share_link(
     return Err(StatusCode::NOT_FOUND);
   };
 
-  let album = db::albums::select_album(pool.get().await.unwrap(), album_share_link.album_id).await;
-  if album.is_none() { return Err(StatusCode::INTERNAL_SERVER_ERROR)  }
+  let Some(album) = db::albums::select_album(pool.get().await.unwrap(), album_share_link.album_id).await else {
+    return Err(StatusCode::INTERNAL_SERVER_ERROR)
+  };
 
   Ok(
     Json(
-      AlbumShareLinkBasic::new(album_share_link, album.unwrap().link)
+      AlbumShareLinkBasic::new(album_share_link, album.uuid)
     )
   )
 }
@@ -632,12 +736,13 @@ pub async fn get_album_share_link_uuid(
     return Err(StatusCode::NOT_FOUND);
   };
 
-  let album = db::albums::select_album(pool.get().await.unwrap(), album_share_link.album_id).await;
-  if album.is_none() { return Err(StatusCode::INTERNAL_SERVER_ERROR)  }
+  let Some(album) = db::albums::select_album(pool.get().await.unwrap(), album_share_link.album_id).await else {
+    return Err(StatusCode::INTERNAL_SERVER_ERROR)
+  };
 
   Ok(
     Json(
-      AlbumShareLinkBasic::new(album_share_link, album.unwrap().link)
+      AlbumShareLinkBasic::new(album_share_link, album.uuid)
     )
   )
 }

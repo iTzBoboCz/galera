@@ -43,7 +43,7 @@ pub async fn shared_album_link(State(pool): State<ConnectionPool>, TypedHeader(A
     return Err(StatusCode::UNAUTHORIZED);
   };
 
-  let album_share_link_security = SharedAlbumLinkSecurity { album_share_link_link: album.link, password: hashed_password };
+  let album_share_link_security = SharedAlbumLinkSecurity { album_share_link_link: album_share_link.link, password: hashed_password };
 
   if album_share_link_security.password != album_share_link.password { return Err(StatusCode::UNAUTHORIZED) }
 

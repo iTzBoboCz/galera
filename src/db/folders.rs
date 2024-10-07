@@ -96,3 +96,14 @@ pub async fn select_parent_folder(conn: DbConn, current_folder: Folder, user_id:
       .ok()
   }).await.unwrap()
 }
+
+pub async fn select_folder_id(conn: DbConn, folder_uuid: String) -> Option<i32> {
+  conn.interact(move |c| {
+    folder::table
+      .select(folder::id)
+      .filter(folder::dsl::uuid.eq(folder_uuid))
+      .first::<i32>(c)
+      .optional()
+      .unwrap()
+  }).await.unwrap()
+}

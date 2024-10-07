@@ -1,5 +1,6 @@
 CREATE TABLE `album_media` (
   `id` INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
+  `uuid` CHAR(36) NOT NULL UNIQUE,
   `album_id` INT NOT NULL,
   `media_id` INT NOT NULL,
   CONSTRAINT `album_media_fk0` FOREIGN KEY (`media_id`) REFERENCES `media`(`id`) ON DELETE CASCADE,

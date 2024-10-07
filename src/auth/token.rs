@@ -4,7 +4,7 @@ use serde::{Serialize, Deserialize};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, TokenData, Validation};
 use tracing::error;
 use uuid::Uuid;
-use crate::{db::{self, tokens::{insert_access_token, insert_refresh_token, select_refresh_token_expiration}, users}, ConnectionPool};
+use crate::{db::{self, tokens::{insert_access_token, insert_refresh_token, select_access_token_id, select_refresh_token_expiration, select_refresh_token_id}, users}, models::{NewAuthAccessToken, NewAuthRefreshToken}, ConnectionPool};
 use crate::DbConn;
 use crate::auth::secret::Secret;
 use anyhow::{self, Context};
@@ -31,6 +31,7 @@ pub struct Claims {
   iat: i64,
   /// ID of a user
   pub user_id: i32,
+  // pub user_uuid: String,
   /// Refresh token - used to refresh access token
   refresh_token: String,
   /// Access token - used to access data
@@ -197,9 +198,10 @@ impl Claims {
   /// bearer_token.add_refresh_token_to_db(conn)
   /// ```
   pub async fn add_refresh_token_to_db(&self, pool: ConnectionPool) -> Option<i32> {
-    insert_refresh_token(pool.get().await.unwrap(), self.user_id, self.refresh_token()).await;
+    let new_auth_refresh_token = NewAuthRefreshToken::new(self.user_id, self.refresh_token());
+    insert_refresh_token(pool.get().await.unwrap(), new_auth_refresh_token).await;
 
-    Some(db::general::get_last_insert_id(pool.get().await.unwrap()).await?)
+    select_refresh_token_id(pool.get().await.unwrap(), self.refresh_token()).await
   }
 
   /// Adds a new access token to the database.
@@ -212,9 +214,10 @@ impl Claims {
   /// bearer_token.add_access_token_to_db(conn, refresh_token_id).await?;
   /// ```
   pub async fn add_access_token_to_db(&self, pool: ConnectionPool, refresh_token_id: i32) -> Option<i32> {
-    insert_access_token(pool.get().await.unwrap(), refresh_token_id, self.access_token()).await;
+    let new_auth_access_token = NewAuthAccessToken::new(refresh_token_id, self.access_token());
+    insert_access_token(pool.get().await.unwrap(), new_auth_access_token.clone()).await;
 
-    Some(db::general::get_last_insert_id(pool.get().await.unwrap()).await?)
+    select_access_token_id(pool.get().await.unwrap(), new_auth_access_token.uuid).await
   }
 
   /// Deletes obsolete access tokens for a given refresh token ID from the database.

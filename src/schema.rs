@@ -5,6 +5,8 @@
 diesel::table! {
   album (id) {
     id -> Integer,
+    #[max_length = 36]
+    uuid -> Char,
     owner_id -> Integer,
     #[max_length = 255]
     name -> Varchar,
@@ -13,8 +15,6 @@ diesel::table! {
     created_at -> Timestamp,
     #[max_length = 36]
     thumbnail_link -> Nullable<Varchar>,
-    #[max_length = 21]
-    link -> Varchar,
     #[max_length = 255]
     password -> Nullable<Varchar>,
   }
@@ -23,6 +23,8 @@ diesel::table! {
 diesel::table! {
   album_invite (id) {
     id -> Integer,
+    #[max_length = 36]
+    uuid -> Char,
     album_id -> Integer,
     invited_user_id -> Integer,
     accepted -> Bool,
@@ -33,6 +35,8 @@ diesel::table! {
 diesel::table! {
   album_media (id) {
     id -> Integer,
+    #[max_length = 36]
+    uuid -> Char,
     album_id -> Integer,
     media_id -> Integer,
   }
@@ -55,6 +59,8 @@ diesel::table! {
 diesel::table! {
   auth_access_token (id) {
     id -> Integer,
+    #[max_length = 36]
+    uuid -> Char,
     refresh_token_id -> Integer,
     #[max_length = 255]
     access_token -> Varchar,
@@ -65,6 +71,8 @@ diesel::table! {
 diesel::table! {
   auth_refresh_token (id) {
     id -> Integer,
+    #[max_length = 36]
+    uuid -> Char,
     user_id -> Integer,
     #[max_length = 255]
     refresh_token -> Varchar,
@@ -75,6 +83,8 @@ diesel::table! {
 diesel::table! {
   favorite_media (id) {
     id -> Integer,
+    #[max_length = 36]
+    uuid -> Char,
     media_id -> Integer,
     user_id -> Integer,
   }
@@ -83,6 +93,8 @@ diesel::table! {
 diesel::table! {
   folder (id) {
     id -> Integer,
+    #[max_length = 36]
+    uuid -> Char,
     owner_id -> Integer,
     parent -> Nullable<Integer>,
     #[max_length = 255]
@@ -93,6 +105,8 @@ diesel::table! {
 diesel::table! {
   media (id) {
     id -> Integer,
+    #[max_length = 36]
+    uuid -> Char,
     #[max_length = 255]
     filename -> Varchar,
     folder_id -> Integer,
@@ -102,8 +116,6 @@ diesel::table! {
     #[max_length = 255]
     description -> Nullable<Varchar>,
     date_taken -> Timestamp,
-    #[max_length = 36]
-    uuid -> Varchar,
     #[max_length = 128]
     sha2_512 -> Varchar,
   }
@@ -112,6 +124,8 @@ diesel::table! {
 diesel::table! {
   user (id) {
     id -> Integer,
+    #[max_length = 36]
+    uuid -> Char,
     #[max_length = 60]
     username -> Varchar,
     #[max_length = 254]

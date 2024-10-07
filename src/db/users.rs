@@ -1,4 +1,4 @@
-use crate::models::{NewUser, User};
+use crate::models::{InsertUser, NewUser, User};
 use crate::schema::user;
 use crate::DbConn;
 use diesel::BoolExpressionMethods;
@@ -18,7 +18,7 @@ use diesel::Table;
 /// };
 /// insert_user(&conn, user);
 /// ```
-pub async fn insert_user(conn: DbConn, user: NewUser) -> usize {
+pub async fn insert_user(conn: DbConn, user: InsertUser) -> usize {
   conn.interact(move |c| {
     diesel::insert_into(user::table)
       .values(user.clone())

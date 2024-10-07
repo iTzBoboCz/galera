@@ -13,10 +13,10 @@ use diesel::ExpressionMethods;
 /// ```
 /// insert_access_token(&conn, 1, "<my_access_token>".to_string());
 /// ```
-pub async fn insert_refresh_token(conn: DbConn, user_id: i32, refresh_token: String) -> Option<()> {
+pub async fn insert_refresh_token(conn: DbConn, new_auth_refresh_token: NewAuthRefreshToken) -> Option<()> {
   let r: Result<usize, diesel::result::Error> = conn.interact(move |c| {
     diesel::insert_into(auth_refresh_token::table)
-      .values(NewAuthRefreshToken::new(user_id, refresh_token))
+      .values(new_auth_refresh_token)
       .execute(c)
   }).await.unwrap();
 
@@ -57,10 +57,10 @@ pub async fn select_refresh_token_expiration(conn: &mut DbConn, refresh_token: S
 /// ```
 /// insert_access_token(&conn, 20, "<my_access_token>".to_string());
 /// ```
-pub async fn insert_access_token(conn: DbConn, refresh_token_id: i32, access_token: String) -> Option<()> {
+pub async fn insert_access_token(conn: DbConn, new_auth_access_token: NewAuthAccessToken) -> Option<()> {
   let r: Result<usize, diesel::result::Error> = conn.interact(move |c| {
     diesel::insert_into(auth_access_token::table)
-      .values(NewAuthAccessToken::new(refresh_token_id, access_token))
+      .values(new_auth_access_token)
       .execute(c)
   }).await.unwrap();
 
@@ -69,6 +69,18 @@ pub async fn insert_access_token(conn: DbConn, refresh_token_id: i32, access_tok
   }
 
   Some(())
+}
+
+/// Selects access token ID from a given uuid.
+pub async fn select_access_token_id(conn: DbConn, access_token_uuid: String) -> Option<i32> {
+  conn.interact(move |c| {
+    auth_access_token::table
+      .select(auth_access_token::id)
+      .filter(auth_access_token::uuid.eq(access_token_uuid))
+      .first(c)
+      .optional()
+      .unwrap()
+  }).await.unwrap()
 }
 
 /// Deletes obsolete access tokens for a given refresh token.

@@ -1,5 +1,6 @@
 CREATE TABLE `auth_refresh_token` (
   `id` INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
+  `uuid` CHAR(36) NOT NULL UNIQUE,
   `user_id` INT NOT NULL,
   `refresh_token` varchar(255) NOT NULL UNIQUE,
   `expiration_time` TIMESTAMP NOT NULL,

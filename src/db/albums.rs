@@ -1,5 +1,5 @@
 use crate::models::{Album, AlbumShareLink, Media, NewAlbum, NewAlbumMedia, NewAlbumShareLink};
-use crate::routes::{AlbumInsertData, AlbumShareLinkInsert, AlbumUpdateData};
+use crate::routes::{AlbumShareLinkInsert, AlbumUpdateData};
 use crate::schema::{album, album_media, album_share_link, media};
 use crate::DbConn;
 use diesel::BoolExpressionMethods;
@@ -41,15 +41,14 @@ pub async fn select_album_id(conn: DbConn, album_uuid: String) -> Option<i32> {
   conn.interact(move |c| {
     album::table
       .select(album::id)
-      .filter(album::dsl::link.eq(album_uuid))
+      .filter(album::dsl::uuid.eq(album_uuid))
       .first::<i32>(c)
       .optional()
       .unwrap()
   }).await.unwrap()
 }
 
-pub async fn insert_album(conn: DbConn, user_id: i32, album_insert_data: AlbumInsertData) {
-  let new_album = NewAlbum::new(user_id, album_insert_data.name, album_insert_data.description, None);
+pub async fn insert_album(conn: DbConn, new_album: NewAlbum) {
   conn.interact(move |c| {
     diesel::insert_into(album::table)
       .values(new_album.clone())

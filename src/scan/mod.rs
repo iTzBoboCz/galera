@@ -146,16 +146,12 @@ pub async fn add_folders_to_db(pool: ConnectionPool, relative_paths: Vec<PathBuf
       if folder_id.is_none() {
         let new_folder = NewFolder::new(user_id, s.clone(), parent);
 
-        db::folders::insert_folder(pool.get().await.unwrap(), new_folder, s, path.clone()).await;
+        db::folders::insert_folder(pool.get().await.unwrap(), new_folder.clone(), s, path.clone()).await;
 
-        let last_insert_id = db::general::get_last_insert_id(pool.get().await.unwrap()).await;
+        if let Some(id) = db::folders::select_folder_id(pool.get().await.unwrap(), new_folder.uuid).await {
+          parent = Some(id);
+        };
 
-        if last_insert_id.is_none() {
-          error!("Last insert id was not returned. This may happen if restarting MySQL during scanning.");
-          return;
-        }
-
-        parent = Some(last_insert_id.unwrap());
       } else {
         parent = folder_id;
       }
