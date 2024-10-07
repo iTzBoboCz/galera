@@ -31,6 +31,7 @@ pub struct Claims {
   iat: i64,
   /// ID of a user
   pub user_id: i32,
+  /// TODO: try using UUID instead
   // pub user_uuid: String,
   /// Refresh token - used to refresh access token
   refresh_token: String,
