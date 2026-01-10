@@ -130,7 +130,7 @@ async fn main() {
 
   // run it
   let addr = SocketAddr::from(([127, 0, 0, 1], 8000));
-  println!("listening on {}", addr);
+  info!("listening on http://{}", addr);
   let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
   axum::serve(listener, app).await.unwrap();
 }
