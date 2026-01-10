@@ -4,7 +4,7 @@ use serde::{Serialize, Deserialize};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, TokenData, Validation};
 use tracing::error;
 use uuid::Uuid;
-use crate::{db::{self, tokens::{insert_access_token, insert_refresh_token, select_refresh_token_expiration}, users}, ConnectionPool};
+use crate::{AppState, ConnectionPool, db::{self, tokens::{insert_access_token, insert_refresh_token, select_refresh_token_expiration}, users}};
 use crate::DbConn;
 use crate::auth::secret::Secret;
 use anyhow::{self, Context};
@@ -249,7 +249,7 @@ impl Claims {
 }
 
 /// Auth middleware.
-pub async fn auth(State(pool): State<ConnectionPool>, TypedHeader(Authorization(bearer)): TypedHeader<Authorization<authorization::Bearer>>, mut req: Request<Body>, next: Next) -> Result<Response, StatusCode> {
+pub async fn auth(State(AppState { pool }): State<AppState>, TypedHeader(Authorization(bearer)): TypedHeader<Authorization<authorization::Bearer>>, mut req: Request<Body>, next: Next) -> Result<Response, StatusCode> {
   let bearer_token_decoded = Claims::try_from(bearer.token());
 
   if let Ok(claims) = bearer_token_decoded {
@@ -276,13 +276,13 @@ pub async fn auth(State(pool): State<ConnectionPool>, TypedHeader(Authorization(
 
 use super::shared_album_link::shared_album_link;
 
-pub async fn mixed_auth(State(pool): State<ConnectionPool>, bearer: Option<TypedHeader<Authorization<authorization::Bearer>>>, special_auth: Option<TypedHeader<Authorization<authorization::Basic>>>, req: Request<Body>, next: Next) -> Result<Response, StatusCode> {
+pub async fn mixed_auth(State(state): State<AppState>, bearer: Option<TypedHeader<Authorization<authorization::Bearer>>>, special_auth: Option<TypedHeader<Authorization<authorization::Basic>>>, req: Request<Body>, next: Next) -> Result<Response, StatusCode> {
   if let Some(bearer) = bearer {
-    if let Ok(result) = auth(State(pool), bearer, req, next).await {
+    if let Ok(result) = auth(State(state), bearer, req, next).await {
       return Ok(result);
     }
   } else if let Some(special_auth) = special_auth {
-    if let Ok(result) = shared_album_link(State(pool), special_auth, req, next).await {
+    if let Ok(result) = shared_album_link(State(state), special_auth, req, next).await {
       return Ok(result);
     }
   }

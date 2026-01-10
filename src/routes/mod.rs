@@ -12,7 +12,7 @@ use axum::http::Request;
 use axum::{Json, http::StatusCode};
 use axum_extra::routing::TypedPath;
 use tracing::{info, error};
-use crate::scan;
+use crate::{AppState, scan};
 use crate::schema::media;
 use crate::{ConnectionPool};
 use chrono::{NaiveDateTime, Utc};
@@ -39,7 +39,7 @@ pub struct UserRoute;
 /// Creates a new user
 pub async fn create_user(
   _: UserRoute,
-  State(pool): State<ConnectionPool>,
+  State(AppState { pool }): State<AppState>,
   Json(user): Json<NewUser>,
 ) -> Result<StatusCode, StatusCode> {
   if !user.check() { return Err(StatusCode::UNPROCESSABLE_ENTITY) }
@@ -62,7 +62,7 @@ pub struct LoginRoute;
 /// You must provide either a username or an email together with a password.
 pub async fn login(
   _: LoginRoute,
-  State(pool): State<ConnectionPool>,
+  State(AppState { pool }): State<AppState>,
   Json(user_login): Json<UserLogin>,
 ) -> Result<Json<LoginResponse>, StatusCode> {
   let token_option = user_login.hash_password().login(pool.clone()).await;
@@ -95,7 +95,7 @@ pub struct LoginRefreshRoute;
 // https://stackoverflow.com/a/53881397
 pub async fn refresh_token(
   _: LoginRefreshRoute,
-  State(pool): State<ConnectionPool>,
+  State(AppState { pool }): State<AppState>,
   Json(encoded_bearer_token): Json<ClaimsEncoded>,
 ) -> Result<Json<ClaimsEncoded>, StatusCode> {
   let decoded = encoded_bearer_token.clone().decode();
@@ -175,7 +175,7 @@ pub struct MediaRoute;
 // FIXME: skips new media in /gallery/username/<medianame>; /gallery/username/<some_folder>/<medianame> works
 pub async fn media_structure(
   _: MediaRoute,
-  State(pool): State<ConnectionPool>,
+  State(AppState { pool }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>
 ) -> Result<Json<Vec<MediaResponse>>, StatusCode> {
   error!("user_id: {}", claims.user_id);
@@ -229,7 +229,7 @@ pub struct AlbumRoute;
 // TODO: change response later
 pub async fn create_album(
   _: AlbumRoute,
-  State(pool): State<ConnectionPool>,
+  State(AppState { pool }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>,
   Json(album_insert_data): Json<AlbumInsertData>
 ) -> Json<Option<AlbumResponse>> {
@@ -265,7 +265,7 @@ pub struct AlbumMediaRoute;
 /// Adds media to an album
 pub async fn album_add_media(
   _: AlbumMediaRoute,
-  State(pool): State<ConnectionPool>,
+  State(AppState { pool }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>,
   Json(list_of_media): Json<Vec<AlbumAddMedia>>
 ) -> Result<(), StatusCode> {
@@ -310,7 +310,7 @@ pub async fn album_add_media(
 /// Retrieves a list of albums of an authenticated user
 pub async fn get_album_list(
   _: AlbumRoute,
-  State(pool): State<ConnectionPool>,
+  State(AppState { pool }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>
 ) -> Json<Vec<AlbumResponse>> {
   let albums = db::albums::get_album_list(pool.get().await.unwrap(), claims.user_id).await;
@@ -339,7 +339,7 @@ pub struct AlbumUuidMediaRoute {
 // TODO: consider using the Extension extractor for auth here
 pub async fn get_album_structure(
   AlbumUuidMediaRoute { album_uuid }: AlbumUuidMediaRoute,
-  State(pool): State<ConnectionPool>,
+  State(AppState { pool }): State<AppState>,
   request: Request<Body>
 ) -> Result<Json<Vec<MediaResponse>>, StatusCode> {
   let Some(album_id) = db::albums::select_album_id(pool.get().await.unwrap(), album_uuid).await else {
@@ -383,7 +383,7 @@ pub async fn get_album_structure(
 /// Updates already existing album
 pub async fn update_album(
   AlbumUuidRoute { album_uuid }: AlbumUuidRoute,
-  State(pool): State<ConnectionPool>,
+  State(AppState { pool }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>,
   Json(album_update_data): Json<AlbumUpdateData>
 ) -> Result<StatusCode, StatusCode> {
@@ -419,7 +419,7 @@ pub async fn update_album(
 /// Deletes an album
 pub async fn delete_album(
   AlbumUuidRoute { album_uuid }: AlbumUuidRoute,
-  State(pool): State<ConnectionPool>,
+  State(AppState { pool }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>
 ) -> Result<StatusCode, StatusCode> {
   let album_id_option = db::albums::select_album_id(pool.get().await.unwrap(), album_uuid).await;
@@ -489,7 +489,7 @@ pub struct AlbumUuidShareLinkRoute {
 /// Creates a new album share link.
 pub async fn create_album_share_link(
   AlbumUuidShareLinkRoute { album_uuid }: AlbumUuidShareLinkRoute,
-  State(pool): State<ConnectionPool>,
+  State(AppState { pool }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>,
   album_share_link_insert: Option<Json<AlbumShareLinkInsert>>
 ) -> Result<Json<SharedAlbumLinkResponse>, StatusCode> {
@@ -540,7 +540,7 @@ impl From<&AlbumShareLink> for SharedAlbumLinkResponse {
 /// Gets a list of album share links.
 pub async fn get_album_share_links(
   AlbumUuidShareLinkRoute { album_uuid }: AlbumUuidShareLinkRoute,
-  State(pool): State<ConnectionPool>,
+  State(AppState { pool }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>
 ) -> Result<Json<Vec<SharedAlbumLinkResponse>>, StatusCode> {
   let Some(album_id) = db::albums::select_album_id(pool.get().await.unwrap(), album_uuid).await else {
@@ -593,7 +593,7 @@ pub struct AlbumShareLinkUuidRoute {
 /// Gets basic information about album share link.
 pub async fn get_album_share_link(
   AlbumShareLinkUuidRoute { album_share_link_uuid }: AlbumShareLinkUuidRoute,
-  State(pool): State<ConnectionPool>
+  State(AppState { pool }): State<AppState>
 ) -> Result<Json<AlbumShareLinkBasic>, StatusCode> {
   let Ok(album_share_link_option) = db::albums::select_album_share_link_by_uuid(pool.get().await.unwrap(), album_share_link_uuid).await else {
     return Err(StatusCode::INTERNAL_SERVER_ERROR);
@@ -616,7 +616,7 @@ pub async fn get_album_share_link(
 /// Updates already existing album share link.
 pub async fn update_album_share_link(
   AlbumShareLinkUuidRoute { album_share_link_uuid }: AlbumShareLinkUuidRoute,
-  State(pool): State<ConnectionPool>,
+  State(AppState { pool }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>,
   Json(album_share_link_insert): Json<AlbumShareLinkInsert>
 ) -> Result<StatusCode, StatusCode> {
@@ -648,7 +648,7 @@ pub async fn update_album_share_link(
 /// Deletes an album share link.
 pub async fn delete_album_share_link(
   AlbumShareLinkUuidRoute { album_share_link_uuid }: AlbumShareLinkUuidRoute,
-  State(pool): State<ConnectionPool>,
+  State(AppState { pool }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>
 ) -> Result<StatusCode, StatusCode> {
   let Ok(album_share_link_option) = db::albums::select_album_share_link_by_uuid(pool.get().await.unwrap(), album_share_link_uuid.clone()).await else {
@@ -683,7 +683,7 @@ pub struct ScanMediaRoute;
 /// Searches for new media
 pub async fn scan_media(
   _: ScanMediaRoute,
-  State(pool): State<ConnectionPool>,
+  State(AppState { pool }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>
 ) -> Result<StatusCode, StatusCode> {
   let Some(directories) = Directories::new() else {
@@ -715,7 +715,7 @@ pub struct MediaUuidRoute {
 // /// Returns a media
 pub async fn get_media_by_uuid(
   MediaUuidRoute { media_uuid }: MediaUuidRoute,
-  State(pool): State<ConnectionPool>,
+  State(AppState { pool }): State<AppState>,
   request: Request<Body>
 ) -> Result<Body, StatusCode> {
   let Ok(media) = pool.get().await.unwrap().interact(|c| {
@@ -786,7 +786,7 @@ pub struct MediaUuidDescriptionRoute {
 /// Updates description of a media
 pub async fn media_update_description(
   MediaUuidDescriptionRoute { media_uuid }: MediaUuidDescriptionRoute,
-  State(pool): State<ConnectionPool>,
+  State(AppState { pool }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>,
   Json(description): Json<MediaDescription>
 ) -> Result<StatusCode, StatusCode> {
@@ -816,7 +816,7 @@ pub async fn media_update_description(
 /// Deletes description of a media
 pub async fn media_delete_description(
   MediaUuidDescriptionRoute { media_uuid }: MediaUuidDescriptionRoute,
-  State(pool): State<ConnectionPool>,
+  State(AppState { pool }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>
 ) -> Result<StatusCode, StatusCode> {
   let Some(media_id) = db::media::select_media_id(pool.get().await.unwrap(), media_uuid.clone()).await else {
@@ -842,7 +842,7 @@ pub struct MediaLikedRoute;
 /// Returns a list of liked media.
 pub async fn get_media_liked_list(
   _: MediaLikedRoute,
-  State(pool): State<ConnectionPool>,
+  State(AppState { pool }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>,
 ) -> Result<Json<Vec<MediaResponse>>, StatusCode> {
   let Ok(liked) = db::media::get_liked_media(pool.get().await.unwrap(), claims.user_id).await else {
@@ -865,7 +865,7 @@ pub struct MediaUuidLikeRoute {
 /// Likes the media.
 pub async fn media_like(
   MediaUuidLikeRoute { media_uuid }: MediaUuidLikeRoute,
-  State(pool): State<ConnectionPool>,
+  State(AppState { pool }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>,
 ) -> Result<StatusCode, StatusCode> {
   let Some(media_id) = db::media::select_media_id(pool.get().await.unwrap(), media_uuid).await else {
@@ -886,7 +886,7 @@ pub async fn media_like(
 /// Unlikes the media.
 pub async fn media_unlike(
   MediaUuidLikeRoute { media_uuid }: MediaUuidLikeRoute,
-  State(pool): State<ConnectionPool>,
+  State(AppState { pool }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>,
 ) -> Result<StatusCode, StatusCode> {
   let Some(media_id) = db::media::select_media_id(pool.get().await.unwrap(), media_uuid).await else {

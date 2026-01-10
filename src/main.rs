@@ -49,6 +49,15 @@ async fn create_db_pool() -> ConnectionPool {
     .unwrap()
 }
 
+#[derive(Clone)]
+pub struct AppState {
+  pub pool: ConnectionPool,
+  // later:
+  // pub oidc_providers: Arc<DashMap<String, OidcProvider>>,
+  // pub login_states: Arc<DashMap<String, PendingLogin>>,
+  // pub http: reqwest::Client,
+}
+
 #[tokio::main]
 async fn main() {
   tracing_subscriber::registry()
@@ -74,6 +83,9 @@ async fn main() {
   pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
   let _ = pool.get().await.unwrap().interact(|c| c.run_pending_migrations(MIGRATIONS).map(|_| ())).await.expect("Can't run migrations.");
 
+  let state = AppState {
+    pool: pool.clone()
+  };
 
   let protected = Router::new()
     .typed_get(routes::media_structure)
@@ -93,7 +105,7 @@ async fn main() {
     .typed_put(routes::update_album_share_link)
     .typed_delete(routes::delete_album_share_link)
     .typed_get(routes::scan_media)
-    .route_layer(middleware::from_fn_with_state(pool.clone(), auth::token::auth));
+    .route_layer(middleware::from_fn_with_state(state.clone(), auth::token::auth));
 
   let unprotected = Router::new()
     .route("/", get(handler))
@@ -106,7 +118,7 @@ async fn main() {
 
   let mixed_auth = Router::new()
     .typed_get(routes::get_album_structure)
-    .route_layer(middleware::from_fn_with_state(pool.clone(), auth::token::mixed_auth));
+    .route_layer(middleware::from_fn_with_state(state.clone(), auth::token::mixed_auth));
 
   // build our application with a route
   let app = protected
@@ -114,7 +126,7 @@ async fn main() {
     .merge(mixed_auth)
     .route_layer(middleware::from_fn(track_metrics))
     .layer(TraceLayer::new_for_http())
-    .with_state(pool);
+    .with_state(state);
 
   // run it
   let addr = SocketAddr::from(([127, 0, 0, 1], 8000));

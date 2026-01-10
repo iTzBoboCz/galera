@@ -2,7 +2,7 @@ use axum::{extract::State, middleware::Next, http::{StatusCode, Request}, respon
 use axum_extra::{TypedHeader, headers::{Authorization, authorization}};
 use serde::{Serialize, Deserialize};
 use sha2::Digest;
-use crate::{db::{albums::{select_album, select_album_share_link_by_uuid}}, ConnectionPool};
+use crate::{AppState, ConnectionPool, db::albums::{select_album, select_album_share_link_by_uuid}};
 use std::{str, sync::Arc};
 
 // #[derive(JsonSchema)]
@@ -22,7 +22,7 @@ pub fn hash_password(password: String) -> String {
 }
 
 /// Implements Request guard for SharedAlbumLinkSecurity.
-pub async fn shared_album_link(State(pool): State<ConnectionPool>, TypedHeader(Authorization(special_auth)): TypedHeader<Authorization<authorization::Basic>>, mut req: Request<Body>, next: Next) -> Result<Response, StatusCode> {
+pub async fn shared_album_link(State(AppState { pool }): State<AppState>, TypedHeader(Authorization(special_auth)): TypedHeader<Authorization<authorization::Basic>>, mut req: Request<Body>, next: Next) -> Result<Response, StatusCode> {
   let album_share_link_uuid = special_auth.username().to_string();
   let password = special_auth.password().to_string();
   let hashed_password =  match password.len() {
