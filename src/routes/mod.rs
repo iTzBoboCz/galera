@@ -1,20 +1,24 @@
 use std::sync::Arc;
+use std::time::Instant;
 use crate::auth::login::{UserLogin, UserInfo, LoginResponse};
 use crate::auth::shared_album_link::{SharedAlbumLinkSecurity, hash_password};
 use crate::auth::token::{Claims, ClaimsEncoded};
+use crate::db::oidc::insert_oidc_user;
 use crate::db::{self, users::get_user_by_id};
 use crate::directories::Directories;
 use crate::models::{Album, AlbumShareLink, Folder, Media, NewAlbumMedia, NewAlbumShareLink, NewUser};
 use axum::Extension;
 use axum::body::Body;
-use axum::extract::{State};
+use axum::extract::{Query, State};
 use axum::http::Request;
+use axum::response::{IntoResponse, Redirect};
 use axum::{Json, http::StatusCode};
 use axum_extra::routing::TypedPath;
-use tracing::{info, error};
-use crate::{AppState, scan};
+use openidconnect::core::CoreAuthenticationFlow;
+use openidconnect::{AuthorizationCode, CsrfToken, Nonce, Scope, TokenResponse};
+use tracing::{debug, error, info, warn};
+use crate::{AppState, ConnectionPool, oidc, scan};
 use crate::schema::media;
-use crate::{ConnectionPool};
 use chrono::{NaiveDateTime, Utc};
 use diesel::ExpressionMethods;
 
@@ -32,6 +36,209 @@ use tokio_util::io::ReaderStream;
 //   "Hello, world!"
 // }
 
+#[derive(TypedPath, Deserialize)]
+#[typed_path("/auth/oidc/:provider/login")]
+pub struct OidcLogin {
+  pub provider: String,
+}
+
+pub async fn oidc_login(
+  OidcLogin { provider }: OidcLogin,
+  State(state): State<AppState>,
+) -> impl IntoResponse {
+  let prov = match state.oidc_providers.get(&provider) {
+    Some(p) => p,
+    None => return (StatusCode::NOT_FOUND, "Unknown OIDC provider").into_response(),
+  };
+
+  // If you store OidcProvider { client, ... }, use: let client = &prov.client;
+  // If you store raw clients, use: let client = &*prov;
+  let client = &prov.client;
+
+  let (auth_url, csrf_token, nonce) = client
+    .authorize_url(
+      CoreAuthenticationFlow::AuthorizationCode,
+      CsrfToken::new_random,
+      Nonce::new_random,
+    )
+    .add_scope(Scope::new("openid".into()))
+    .add_scope(Scope::new("profile".into()))
+    .add_scope(Scope::new("email".into()))
+    .url();
+
+  // Store state -> nonce + provider for callback validation
+  state.login_states.insert(
+    csrf_token.secret().to_owned(),
+    oidc::PendingLogin {
+      provider: provider.clone(),
+      nonce,
+      created_at: Instant::now(),
+    },
+  );
+
+  Redirect::temporary(auth_url.as_str()).into_response()
+}
+
+
+#[derive(TypedPath, Deserialize)]
+#[typed_path("/auth/oidc/:provider/callback")]
+pub struct OidcCallback {
+  pub provider: String,
+}
+
+// 10 minutes
+const LOGIN_STATE_TTL_SECS: u64 = 10 * 60;
+
+#[derive(Deserialize)]
+pub struct OidcCallbackQuery {
+  code: String,
+  state: String
+}
+
+pub async fn oidc_callback(
+  OidcCallback { provider }: OidcCallback,
+  Query(q): Query<OidcCallbackQuery>,
+  State(state): State<AppState>
+) -> impl IntoResponse {
+  // Validate and consume CSRF "state"
+  let pending = match state.login_states.remove(&q.state) {
+    Some((_, p)) => p,
+    None => return (StatusCode::BAD_REQUEST, "Invalid/expired state").into_response(),
+  };
+
+  // Check if state = csrf_state per docs
+  if pending.provider != provider {
+    return (StatusCode::BAD_REQUEST, "Provider mismatch").into_response();
+  }
+
+  if pending.created_at.elapsed().as_secs() > LOGIN_STATE_TTL_SECS {
+    return (StatusCode::BAD_REQUEST, "Login expired").into_response();
+  }
+
+  // 2) Get provider client
+  let prov = match state.oidc_providers.get(&provider) {
+    Some(p) => p,
+    None => return (StatusCode::NOT_FOUND, "Unknown OIDC provider").into_response(),
+  };
+
+  let client = &prov.client;
+
+  // 3) Exchange code -> tokens (client_secret verified here by IdP)
+  let token_request = match client.exchange_code(AuthorizationCode::new(q.code)) {
+    Ok(req) => req,
+    Err(e) => {
+      warn!("token endpoint not set / exchange_code failed: {e}");
+      return (StatusCode::BAD_REQUEST, "OIDC token endpoint not available").into_response();
+    }
+  };
+
+  let token_response = match token_request
+    .request_async(&state.http_client)
+    .await
+  {
+    Ok(t) => t,
+    Err(e) => {
+      warn!("token exchange failed: {e}");
+      return (StatusCode::UNAUTHORIZED, "Token exchange failed").into_response();
+    }
+  };
+
+  // 4) Verify ID token signature + nonce
+  let id_token = match token_response.id_token() {
+    Some(t) => t,
+    None => return (StatusCode::UNAUTHORIZED, "Missing id_token").into_response(),
+  };
+
+  let claims = match id_token.claims(&client.id_token_verifier(), &pending.nonce) {
+    Ok(c) => c,
+    Err(e) => {
+      warn!("id_token verification failed: {e}");
+      return (StatusCode::UNAUTHORIZED, "Invalid id_token").into_response();
+    }
+  };
+
+  let sub = claims.subject().as_str().to_owned();
+  let Some(email) = claims.email().map(|e| e.as_str().to_owned()) else {
+    return (StatusCode::BAD_REQUEST, "Missing email").into_response();
+  };
+
+  debug!("OIDC login ok provider={} sub={} email={:?}", provider, sub, email);
+
+  // 5) Find existing identity by (provider, sub)
+  if let Some(user) = db::oidc::get_user_by_oidc_subject(state.pool.get().await.unwrap(), provider.clone(), sub.clone()).await {
+    let claims = Claims::new(user.id);
+    return issue_login_response(state.pool, claims).await.into_response();
+  }
+
+  // 6) Not found → signup gate
+  if !prov.config.allow_signup {
+    return (StatusCode::UNAUTHORIZED, "Signups disabled").into_response();
+  }
+
+  // 7) Create new local user (OIDC-only) + link identity
+  let Ok(user_id) = insert_oidc_user(state.pool.get().await.unwrap(), provider.clone(), sub.clone(), email).await else {
+    debug!("Created a new OIDC-only user: {} - {}", provider, sub);
+    return (StatusCode::INTERNAL_SERVER_ERROR, "Can't create new oidc-only user").into_response();
+  };
+
+  // 8) Issue normal JWT login response
+  issue_login_response(state.pool, Claims::new(user_id)).await.into_response()
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ServerConfigResponse {
+  auth: AuthConfig,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct AuthConfig {
+    pub oidc: Vec<OidcProviderPublic>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct OidcProviderPublic {
+    pub key: String,
+    pub display_name: String,
+    pub login_url: String,
+}
+
+#[derive(TypedPath)]
+#[typed_path("/public/config")]
+pub struct ServerConfig;
+
+/// Returns server configuration
+pub async fn get_server_config(
+  _: ServerConfig,
+  State(AppState { oidc_providers,..}): State<AppState>,
+) -> Json<ServerConfigResponse> {
+
+  let oidc = oidc_providers
+    .iter()
+    .map(|entry| {
+      let provider = entry.value();
+
+      let key = provider.key.clone();
+
+      // use OIDC_PROVIDER_KEY when OIDC_DISPLAY_NAME isn't available
+      let display_name = provider
+        .display_name
+        .clone()
+        .unwrap_or_else(|| key.clone());
+
+      OidcProviderPublic {
+        display_name,
+        login_url: format!("/auth/oidc/{}/login", key),
+        key,
+      }
+    })
+    .collect::<Vec<_>>();
+
+  Json(ServerConfigResponse {
+    auth: AuthConfig { oidc },
+  })
+
+}
+
 #[derive(TypedPath)]
 #[typed_path("/user")]
 pub struct UserRoute;
@@ -39,7 +246,7 @@ pub struct UserRoute;
 /// Creates a new user
 pub async fn create_user(
   _: UserRoute,
-  State(AppState { pool }): State<AppState>,
+  State(AppState { pool,.. }): State<AppState>,
   Json(user): Json<NewUser>,
 ) -> Result<StatusCode, StatusCode> {
   if !user.check() { return Err(StatusCode::UNPROCESSABLE_ENTITY) }
@@ -62,7 +269,7 @@ pub struct LoginRoute;
 /// You must provide either a username or an email together with a password.
 pub async fn login(
   _: LoginRoute,
-  State(AppState { pool }): State<AppState>,
+  State(AppState { pool,.. }): State<AppState>,
   Json(user_login): Json<UserLogin>,
 ) -> Result<Json<LoginResponse>, StatusCode> {
   let token_option = user_login.hash_password().login(pool.clone()).await;
@@ -70,6 +277,11 @@ pub async fn login(
 
   let token = token_option.unwrap();
 
+  issue_login_response(pool, token).await
+}
+
+
+async fn issue_login_response(pool: ConnectionPool, token: Claims) -> Result<Json<LoginResponse>, StatusCode> {
   let user_info = get_user_by_id(pool.get().await.unwrap(), token.user_id).await;
   if user_info.is_none() { return Err(StatusCode::INTERNAL_SERVER_ERROR) }
 
@@ -95,7 +307,7 @@ pub struct LoginRefreshRoute;
 // https://stackoverflow.com/a/53881397
 pub async fn refresh_token(
   _: LoginRefreshRoute,
-  State(AppState { pool }): State<AppState>,
+  State(AppState { pool,.. }): State<AppState>,
   Json(encoded_bearer_token): Json<ClaimsEncoded>,
 ) -> Result<Json<ClaimsEncoded>, StatusCode> {
   let decoded = encoded_bearer_token.clone().decode();
@@ -175,7 +387,7 @@ pub struct MediaRoute;
 // FIXME: skips new media in /gallery/username/<medianame>; /gallery/username/<some_folder>/<medianame> works
 pub async fn media_structure(
   _: MediaRoute,
-  State(AppState { pool }): State<AppState>,
+  State(AppState { pool,.. }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>
 ) -> Result<Json<Vec<MediaResponse>>, StatusCode> {
   error!("user_id: {}", claims.user_id);
@@ -229,7 +441,7 @@ pub struct AlbumRoute;
 // TODO: change response later
 pub async fn create_album(
   _: AlbumRoute,
-  State(AppState { pool }): State<AppState>,
+  State(AppState { pool,.. }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>,
   Json(album_insert_data): Json<AlbumInsertData>
 ) -> Json<Option<AlbumResponse>> {
@@ -265,7 +477,7 @@ pub struct AlbumMediaRoute;
 /// Adds media to an album
 pub async fn album_add_media(
   _: AlbumMediaRoute,
-  State(AppState { pool }): State<AppState>,
+  State(AppState { pool,.. }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>,
   Json(list_of_media): Json<Vec<AlbumAddMedia>>
 ) -> Result<(), StatusCode> {
@@ -310,7 +522,7 @@ pub async fn album_add_media(
 /// Retrieves a list of albums of an authenticated user
 pub async fn get_album_list(
   _: AlbumRoute,
-  State(AppState { pool }): State<AppState>,
+  State(AppState { pool,.. }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>
 ) -> Json<Vec<AlbumResponse>> {
   let albums = db::albums::get_album_list(pool.get().await.unwrap(), claims.user_id).await;
@@ -339,7 +551,7 @@ pub struct AlbumUuidMediaRoute {
 // TODO: consider using the Extension extractor for auth here
 pub async fn get_album_structure(
   AlbumUuidMediaRoute { album_uuid }: AlbumUuidMediaRoute,
-  State(AppState { pool }): State<AppState>,
+  State(AppState { pool,.. }): State<AppState>,
   request: Request<Body>
 ) -> Result<Json<Vec<MediaResponse>>, StatusCode> {
   let Some(album_id) = db::albums::select_album_id(pool.get().await.unwrap(), album_uuid).await else {
@@ -383,7 +595,7 @@ pub async fn get_album_structure(
 /// Updates already existing album
 pub async fn update_album(
   AlbumUuidRoute { album_uuid }: AlbumUuidRoute,
-  State(AppState { pool }): State<AppState>,
+  State(AppState { pool,.. }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>,
   Json(album_update_data): Json<AlbumUpdateData>
 ) -> Result<StatusCode, StatusCode> {
@@ -419,7 +631,7 @@ pub async fn update_album(
 /// Deletes an album
 pub async fn delete_album(
   AlbumUuidRoute { album_uuid }: AlbumUuidRoute,
-  State(AppState { pool }): State<AppState>,
+  State(AppState { pool,.. }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>
 ) -> Result<StatusCode, StatusCode> {
   let album_id_option = db::albums::select_album_id(pool.get().await.unwrap(), album_uuid).await;
@@ -489,7 +701,7 @@ pub struct AlbumUuidShareLinkRoute {
 /// Creates a new album share link.
 pub async fn create_album_share_link(
   AlbumUuidShareLinkRoute { album_uuid }: AlbumUuidShareLinkRoute,
-  State(AppState { pool }): State<AppState>,
+  State(AppState { pool,.. }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>,
   album_share_link_insert: Option<Json<AlbumShareLinkInsert>>
 ) -> Result<Json<SharedAlbumLinkResponse>, StatusCode> {
@@ -540,7 +752,7 @@ impl From<&AlbumShareLink> for SharedAlbumLinkResponse {
 /// Gets a list of album share links.
 pub async fn get_album_share_links(
   AlbumUuidShareLinkRoute { album_uuid }: AlbumUuidShareLinkRoute,
-  State(AppState { pool }): State<AppState>,
+  State(AppState { pool,.. }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>
 ) -> Result<Json<Vec<SharedAlbumLinkResponse>>, StatusCode> {
   let Some(album_id) = db::albums::select_album_id(pool.get().await.unwrap(), album_uuid).await else {
@@ -593,7 +805,7 @@ pub struct AlbumShareLinkUuidRoute {
 /// Gets basic information about album share link.
 pub async fn get_album_share_link(
   AlbumShareLinkUuidRoute { album_share_link_uuid }: AlbumShareLinkUuidRoute,
-  State(AppState { pool }): State<AppState>
+  State(AppState { pool,.. }): State<AppState>
 ) -> Result<Json<AlbumShareLinkBasic>, StatusCode> {
   let Ok(album_share_link_option) = db::albums::select_album_share_link_by_uuid(pool.get().await.unwrap(), album_share_link_uuid).await else {
     return Err(StatusCode::INTERNAL_SERVER_ERROR);
@@ -616,7 +828,7 @@ pub async fn get_album_share_link(
 /// Updates already existing album share link.
 pub async fn update_album_share_link(
   AlbumShareLinkUuidRoute { album_share_link_uuid }: AlbumShareLinkUuidRoute,
-  State(AppState { pool }): State<AppState>,
+  State(AppState { pool,.. }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>,
   Json(album_share_link_insert): Json<AlbumShareLinkInsert>
 ) -> Result<StatusCode, StatusCode> {
@@ -648,7 +860,7 @@ pub async fn update_album_share_link(
 /// Deletes an album share link.
 pub async fn delete_album_share_link(
   AlbumShareLinkUuidRoute { album_share_link_uuid }: AlbumShareLinkUuidRoute,
-  State(AppState { pool }): State<AppState>,
+  State(AppState { pool,.. }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>
 ) -> Result<StatusCode, StatusCode> {
   let Ok(album_share_link_option) = db::albums::select_album_share_link_by_uuid(pool.get().await.unwrap(), album_share_link_uuid.clone()).await else {
@@ -683,7 +895,7 @@ pub struct ScanMediaRoute;
 /// Searches for new media
 pub async fn scan_media(
   _: ScanMediaRoute,
-  State(AppState { pool }): State<AppState>,
+  State(AppState { pool,.. }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>
 ) -> Result<StatusCode, StatusCode> {
   let Some(directories) = Directories::new() else {
@@ -715,7 +927,7 @@ pub struct MediaUuidRoute {
 // /// Returns a media
 pub async fn get_media_by_uuid(
   MediaUuidRoute { media_uuid }: MediaUuidRoute,
-  State(AppState { pool }): State<AppState>,
+  State(AppState { pool,.. }): State<AppState>,
   request: Request<Body>
 ) -> Result<Body, StatusCode> {
   let Ok(media) = pool.get().await.unwrap().interact(|c| {
@@ -786,7 +998,7 @@ pub struct MediaUuidDescriptionRoute {
 /// Updates description of a media
 pub async fn media_update_description(
   MediaUuidDescriptionRoute { media_uuid }: MediaUuidDescriptionRoute,
-  State(AppState { pool }): State<AppState>,
+  State(AppState { pool,.. }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>,
   Json(description): Json<MediaDescription>
 ) -> Result<StatusCode, StatusCode> {
@@ -816,7 +1028,7 @@ pub async fn media_update_description(
 /// Deletes description of a media
 pub async fn media_delete_description(
   MediaUuidDescriptionRoute { media_uuid }: MediaUuidDescriptionRoute,
-  State(AppState { pool }): State<AppState>,
+  State(AppState { pool,.. }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>
 ) -> Result<StatusCode, StatusCode> {
   let Some(media_id) = db::media::select_media_id(pool.get().await.unwrap(), media_uuid.clone()).await else {
@@ -842,7 +1054,7 @@ pub struct MediaLikedRoute;
 /// Returns a list of liked media.
 pub async fn get_media_liked_list(
   _: MediaLikedRoute,
-  State(AppState { pool }): State<AppState>,
+  State(AppState { pool,.. }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>,
 ) -> Result<Json<Vec<MediaResponse>>, StatusCode> {
   let Ok(liked) = db::media::get_liked_media(pool.get().await.unwrap(), claims.user_id).await else {
@@ -865,7 +1077,7 @@ pub struct MediaUuidLikeRoute {
 /// Likes the media.
 pub async fn media_like(
   MediaUuidLikeRoute { media_uuid }: MediaUuidLikeRoute,
-  State(AppState { pool }): State<AppState>,
+  State(AppState { pool,.. }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>,
 ) -> Result<StatusCode, StatusCode> {
   let Some(media_id) = db::media::select_media_id(pool.get().await.unwrap(), media_uuid).await else {
@@ -886,7 +1098,7 @@ pub async fn media_like(
 /// Unlikes the media.
 pub async fn media_unlike(
   MediaUuidLikeRoute { media_uuid }: MediaUuidLikeRoute,
-  State(AppState { pool }): State<AppState>,
+  State(AppState { pool,.. }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>,
 ) -> Result<StatusCode, StatusCode> {
   let Some(media_id) = db::media::select_media_id(pool.get().await.unwrap(), media_uuid).await else {

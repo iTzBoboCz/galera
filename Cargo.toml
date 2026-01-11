@@ -2,7 +2,7 @@
 name = "galera"
 version = "0.1.0"
 authors = ["Ondřej Pešek <iTzBoboCz@users.noreply.github.com>"]
-edition = "2021"
+edition = "2024"
 license = "GPL-3.0-only"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -57,6 +57,9 @@ walkdir = "2.4.0"
 tokio = { version = "1.34.0", features = ["full"] }
 tokio-util = { version = "0.7.10", features = ["io"]}
 tower-http = { version = "0.5.0", features = ["cors", "trace"] }
+openidconnect = { version = "4.0.1", features = ["reqwest"] }
+reqwest = "0.13.1"
+dashmap = "6.1.0"
 
 [dev-dependencies]
 

@@ -1,4 +1,4 @@
-use super::schema::{album, album_media, album_invite, album_share_link, auth_access_token, auth_refresh_token, folder, media, favorite_media, user};
+use super::schema::{album, album_media, album_invite, album_share_link, auth_access_token, auth_refresh_token, folder, media, favorite_media, user, oidc_identity};
 use chrono::{Duration, NaiveDateTime, Utc};
 use email_address::EmailAddress;
 use lazy_regex::regex_is_match;
@@ -15,7 +15,7 @@ pub struct User {
   pub id: i32,
   pub username: String,
   pub email: String,
-  pub password: String,
+  pub password: Option<String>,
 }
 
 /// Struct for inserting new users.
@@ -25,21 +25,27 @@ pub struct User {
 pub struct NewUser {
   pub username: String,
   pub email: String,
-  pub password: String,
+  pub password: Option<String>,
 }
 
 impl NewUser {
-  pub fn new(username: String, email: String, password: String) -> NewUser {
+  pub fn new(username: String, email: String, password: Option<String>) -> NewUser {
     NewUser { username, email, password }
+  }
+
+  pub fn new_oidc(oidc_provider: String, oidc_subject: String, email: String) -> NewUser {
+    NewUser { username: format!("oidc-{}-{}", oidc_provider, oidc_subject).to_lowercase().to_owned(), email, password: None }
   }
 
   /// Encrypts the password.
   // TODO: deduplicate later
   pub fn hash_password(mut self) -> Self {
+    if self.password.is_none() { return self; }
+
     let mut hasher = sha2::Sha512::new();
-    hasher.update(self.password);
+    hasher.update(self.password.unwrap());
     // {:x} means format as hexadecimal
-    self.password = format!("{:X}", hasher.finalize());
+    self.password = Some(format!("{:X}", hasher.finalize()));
 
     self
   }
@@ -50,8 +56,9 @@ impl NewUser {
   }
 
   /// Runs username, email and password checks.
+  /// OIDC users don't have a password so no password = valid password
   pub fn check(&self) -> bool {
-    self.check_username() && self.is_email_valid() && self.check_password()
+    self.check_username() && self.is_email_valid() && self.check_password().unwrap_or(true)
   }
 
   /// Checks the password.
@@ -62,12 +69,15 @@ impl NewUser {
   /// There are **no limits on what characters you can use**
   /// because it could make cracking passwords easier.\
   /// Maximum length limit is there to prevent long password denial of service
-  pub fn check_password(&self) -> bool {
-    let len = self.password.chars().count();
+  /// None is used when the user account is passwordless (OIDC)
+  pub fn check_password(&self) -> Option<bool> {
+    let Some(ref password) = self.password else { return None; };
 
-    if len < 8 || len > 128 { return false; }
+    let len = password.chars().count();
 
-    true
+    if len < 8 || len > 128 { return Some(false); }
+
+    Some(true)
   }
 
   /// Checks the username.
@@ -81,7 +91,7 @@ impl NewUser {
   /// 2. numbers (0-9)
   /// 3. underscore (_)
   pub fn check_username(&self) -> bool {
-    let len = self.password.chars().count();
+    let len = self.username.chars().count();
 
     if len < 5 || len > 30 { return false; }
 
@@ -352,4 +362,25 @@ impl NewAuthAccessToken {
       expiration_time: Utc::now().naive_utc() + Duration::minutes(15)
     }
   }
+}
+
+#[allow(non_camel_case_types)]
+#[derive(Identifiable, Queryable, Associations)]
+#[diesel(table_name = oidc_identity)]
+#[diesel(belongs_to(User, foreign_key = user_id))]
+pub struct OidcIdentity {
+  pub id: i32,
+  pub provider_key: String,
+  pub subject: String,
+  pub user_id: i32,
+  pub created_at: NaiveDateTime,
+}
+
+#[derive(Clone, Insertable)]
+#[diesel(table_name = oidc_identity)]
+pub struct NewOidcIdentity {
+  pub provider_key: String,
+  pub subject: String,
+  pub user_id: i32,
+  pub created_at: NaiveDateTime,
 }

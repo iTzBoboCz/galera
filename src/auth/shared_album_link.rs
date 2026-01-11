@@ -22,7 +22,7 @@ pub fn hash_password(password: String) -> String {
 }
 
 /// Implements Request guard for SharedAlbumLinkSecurity.
-pub async fn shared_album_link(State(AppState { pool }): State<AppState>, TypedHeader(Authorization(special_auth)): TypedHeader<Authorization<authorization::Basic>>, mut req: Request<Body>, next: Next) -> Result<Response, StatusCode> {
+pub async fn shared_album_link(State(AppState { pool,.. }): State<AppState>, TypedHeader(Authorization(special_auth)): TypedHeader<Authorization<authorization::Basic>>, mut req: Request<Body>, next: Next) -> Result<Response, StatusCode> {
   let album_share_link_uuid = special_auth.username().to_string();
   let password = special_auth.password().to_string();
   let hashed_password =  match password.len() {

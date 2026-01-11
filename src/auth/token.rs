@@ -249,7 +249,7 @@ impl Claims {
 }
 
 /// Auth middleware.
-pub async fn auth(State(AppState { pool }): State<AppState>, TypedHeader(Authorization(bearer)): TypedHeader<Authorization<authorization::Bearer>>, mut req: Request<Body>, next: Next) -> Result<Response, StatusCode> {
+pub async fn auth(State(AppState { pool,.. }): State<AppState>, TypedHeader(Authorization(bearer)): TypedHeader<Authorization<authorization::Bearer>>, mut req: Request<Body>, next: Next) -> Result<Response, StatusCode> {
   let bearer_token_decoded = Claims::try_from(bearer.token());
 
   if let Ok(claims) = bearer_token_decoded {

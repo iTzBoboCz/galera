@@ -4,3 +4,4 @@ pub mod general;
 pub mod media;
 pub mod tokens;
 pub mod users;
+pub mod oidc;

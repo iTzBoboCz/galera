@@ -14,6 +14,7 @@
 extern crate diesel;
 
 use axum_extra::routing::RouterExt;
+use dashmap::DashMap;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
 use tracing::{warn, info};
 use crate::auth::secret::Secret;
@@ -23,9 +24,10 @@ use deadpool_diesel::{Pool, Runtime, Manager};
 use diesel::{MysqlConnection};
 use diesel_migrations::MigrationHarness;
 use metrics_exporter_prometheus::{Matcher, PrometheusBuilder, PrometheusHandle};
-use std::{net::SocketAddr, time::Instant, future::ready};
+use std::{future::ready, net::SocketAddr, sync::Arc, time::Instant};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use tower_http::trace::TraceLayer;
+use openidconnect::reqwest;
 
 // mod media;
 // mod errors;
@@ -36,6 +38,7 @@ mod scan;
 mod schema;
 mod auth;
 mod directories;
+mod oidc;
 
 pub type ConnectionPool = Pool<Manager<MysqlConnection>>;
 pub type DbConn = deadpool::managed::Object<Manager<MysqlConnection>>;
@@ -50,12 +53,25 @@ async fn create_db_pool() -> ConnectionPool {
 }
 
 #[derive(Clone)]
+pub struct OidcProvider {
+  pub key: String,
+  pub display_name: Option<String>,
+  pub client: oidc::ConfiguredCoreClient,
+  pub config: OidcProviderConfig,
+}
+
+#[derive(Clone)]
+pub struct OidcProviderConfig {
+  pub allow_signup: bool,
+  // pub map_by_email: bool,
+}
+
+#[derive(Clone)]
 pub struct AppState {
   pub pool: ConnectionPool,
-  // later:
-  // pub oidc_providers: Arc<DashMap<String, OidcProvider>>,
-  // pub login_states: Arc<DashMap<String, PendingLogin>>,
-  // pub http: reqwest::Client,
+  pub oidc_providers: Arc<DashMap<String, OidcProvider>>,
+  pub login_states: Arc<DashMap<String, oidc::PendingLogin>>,
+  pub http_client: reqwest::Client,
 }
 
 #[tokio::main]
@@ -63,7 +79,7 @@ async fn main() {
   tracing_subscriber::registry()
     .with(
       tracing_subscriber::EnvFilter::try_from_default_env()
-      .unwrap_or_else(|_| "info,tower_http=debug".into()),
+        .unwrap_or_else(|_| "info,tower_http=debug".into()),
     )
     .with(tracing_subscriber::fmt::layer())
     .init();
@@ -83,8 +99,44 @@ async fn main() {
   pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
   let _ = pool.get().await.unwrap().interact(|c| c.run_pending_migrations(MIGRATIONS).map(|_| ())).await.expect("Can't run migrations.");
 
+
+  let http_client = reqwest::ClientBuilder::new()
+    // Following redirects opens the client up to SSRF vulnerabilities.
+    .redirect(reqwest::redirect::Policy::none())
+    .build()
+    .expect("Client should build");
+
+    // Build OIDC provider map (for now: single provider from ENV)
+  let oidc_providers: Arc<DashMap<String, OidcProvider>> = Arc::new(DashMap::new());
+
+  match oidc::build_oidc_client(&http_client).await {
+    Ok(client) => {
+      let display_name = std::env::var("OIDC_PROVIDER_KEY").ok();
+
+      // let map_by_email = std::env::var("OIDC_MAP_BY_EMAIL")
+      //   .map(|v| matches!(v.to_lowercase().as_str(), "true" | "1"))
+      //   .unwrap_or(false);
+      let allow_signup = std::env::var("OIDC_ALLOW_SIGNUP")
+        .map(|v| matches!(v.to_lowercase().as_str(), "true" | "1"))
+        .unwrap_or(false);
+
+      if let Ok(oidc_provider) = std::env::var("OIDC_PROVIDER_KEY") {
+        oidc_providers.insert(oidc_provider.clone(), OidcProvider { key: oidc_provider.clone(), display_name, client, config: OidcProviderConfig { allow_signup } });
+
+        info!("OIDC enabled for provider: {:?}", oidc_provider);
+      }
+    }
+    Err(e) => {
+      // Don't crash server — just disable SSO
+      warn!("OIDC disabled (startup discovery failed): {e}");
+    }
+  }
+
   let state = AppState {
-    pool: pool.clone()
+    pool:pool.clone(),
+    oidc_providers,
+    login_states: Arc::new(DashMap::new()),
+    http_client,
   };
 
   let protected = Router::new()
@@ -110,6 +162,9 @@ async fn main() {
   let unprotected = Router::new()
     .route("/", get(handler))
     .route("/metrics", get(move || ready(recorder_handle.render())))
+    .typed_get(routes::get_server_config)
+    .typed_get(routes::oidc_login)
+    .typed_get(routes::oidc_callback)
     .typed_post(routes::create_user)
     .typed_post(routes::login)
     .typed_post(routes::refresh_token)

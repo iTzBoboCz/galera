@@ -108,6 +108,18 @@ diesel::table! {
 }
 
 diesel::table! {
+  oidc_identity (id) {
+    id -> Integer,
+    #[max_length = 128]
+    provider_key -> Varchar,
+    #[max_length = 255]
+    subject -> Varchar,
+    user_id -> Integer,
+    created_at -> Timestamp,
+  }
+}
+
+diesel::table! {
   user (id) {
     id -> Integer,
     #[max_length = 60]
@@ -115,7 +127,7 @@ diesel::table! {
     #[max_length = 254]
     email -> Varchar,
     #[max_length = 128]
-    password -> Varchar,
+    password -> Nullable<Varchar>,
   }
 }
 
@@ -132,6 +144,7 @@ diesel::joinable!(favorite_media -> user (user_id));
 diesel::joinable!(folder -> user (owner_id));
 diesel::joinable!(media -> folder (folder_id));
 diesel::joinable!(media -> user (owner_id));
+diesel::joinable!(oidc_identity -> user (user_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
   album,
@@ -143,5 +156,6 @@ diesel::allow_tables_to_appear_in_same_query!(
   favorite_media,
   folder,
   media,
+  oidc_identity,
   user,
 );

@@ -1,0 +1,52 @@
+use openidconnect::{
+    ClientId, ClientSecret, EndpointMaybeSet, EndpointNotSet, EndpointSet, IssuerUrl, RedirectUrl, core::{CoreClient, CoreProviderMetadata}, reqwest
+};
+
+use std::{net::SocketAddr, time::Instant};
+use openidconnect::Nonce;
+
+/// Stores temporary data between /login and /callback
+#[derive(Clone)]
+pub struct PendingLogin {
+    pub provider: String,
+    pub nonce: Nonce,
+    pub created_at: Instant,
+}
+
+pub type ConfiguredCoreClient = CoreClient<
+    EndpointSet,      // auth url set
+    EndpointNotSet,   // device auth url not set
+    EndpointNotSet,   // introspection url not set
+    EndpointNotSet,   // revocation url not set
+    EndpointMaybeSet, // token url maybe set (depends on provider metadata)
+    EndpointMaybeSet, // userinfo url maybe set (depends on provider metadata)
+>;
+
+pub async fn build_oidc_client(http_client: &reqwest::Client) -> Result<ConfiguredCoreClient, Box<dyn std::error::Error>> {
+    let issuer = std::env::var("OIDC_ISSUER")?;
+    let client_id = std::env::var("CLIENT_ID")?;
+    let client_secret = std::env::var("CLIENT_SECRET")?;
+    let provider_key = std::env::var("OIDC_PROVIDER_KEY")?;
+    let redirect = std::env::var("OIDC_REDIRECT_URL")
+        .unwrap_or_else(|_| format!("http://{}/auth/oidc/{}/callback", SocketAddr::from(([127, 0, 0, 1], 8000)), provider_key).to_string());
+
+    // IMPORTANT: issuer should be like: https://auth.example.com/realms/YourRealm
+    let provider_metadata = CoreProviderMetadata::discover_async(
+        IssuerUrl::new(issuer)?,
+        http_client,
+    )
+    .await?;
+
+    let client = CoreClient::from_provider_metadata(
+        provider_metadata,
+        ClientId::new(client_id),
+        Some(ClientSecret::new(client_secret)),
+    )
+    .set_redirect_uri(RedirectUrl::new(redirect)?);
+
+    Ok(client)
+}
+
+// pub async fn verify_secret() {
+
+// }
