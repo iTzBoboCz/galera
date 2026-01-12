@@ -34,7 +34,7 @@ pub async fn build_oidc_client(http_client: &reqwest::Client) -> Result<Configur
     }
 
     let redirect = std::env::var("OIDC_REDIRECT_URL")
-        .unwrap_or_else(|_| format!("http://{}/auth/oidc/{}/callback", SocketAddr::from(([127, 0, 0, 1], 8000)), provider_key).to_string());
+        .unwrap_or_else(|_| format!("http://{}/auth/oidc/{}/callback", SocketAddr::from(([0, 0, 0, 0], 8000)), provider_key).to_string());
 
     // IMPORTANT: issuer should be like: https://auth.example.com/realms/YourRealm
     let provider_metadata = CoreProviderMetadata::discover_async(
