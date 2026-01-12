@@ -14,9 +14,9 @@ COPY . .
 RUN cargo build --release --bin galera && strip /app/target/release/galera
 
 # We do not need the Rust toolchain to run the binary!
-FROM debian:buster-slim AS runtime
+FROM debian:trixie-slim AS runtime
 WORKDIR app
 COPY --from=builder /app/target/release/galera /usr/local/bin
-RUN apt update -y && apt install -y libmariadb-dev
+RUN apt update -y && apt install -y libmariadb3
 EXPOSE 8000
-ENTRYPOINT ["/bin/sh", "-c", "ROCKET_DATABASES={galera={url=${DATABASE_URL}}} ROCKET_ADDRESS=0.0.0.0 RUST_LOG=${LOG_LEVEL} RUST_BACKTRACE=${RUST_BACKTRACE} /usr/local/bin/galera"]
+ENTRYPOINT ["/usr/local/bin/galera"]
