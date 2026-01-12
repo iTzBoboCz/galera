@@ -1,6 +1,7 @@
 use openidconnect::{
     ClientId, ClientSecret, EndpointMaybeSet, EndpointNotSet, EndpointSet, IssuerUrl, RedirectUrl, core::{CoreClient, CoreProviderMetadata}, reqwest
 };
+use tracing::debug;
 
 use std::{net::SocketAddr, time::Instant};
 use openidconnect::Nonce;
@@ -24,9 +25,14 @@ pub type ConfiguredCoreClient = CoreClient<
 
 pub async fn build_oidc_client(http_client: &reqwest::Client) -> Result<ConfiguredCoreClient, Box<dyn std::error::Error>> {
     let issuer = std::env::var("OIDC_ISSUER")?;
-    let client_id = std::env::var("CLIENT_ID")?;
-    let client_secret = std::env::var("CLIENT_SECRET")?;
+    let client_id = std::env::var("OIDC_CLIENT_ID")?;
+    let client_secret = std::env::var("OIDC_CLIENT_SECRET")?;
     let provider_key = std::env::var("OIDC_PROVIDER_KEY")?;
+    if [&issuer, &client_id, &client_secret, &provider_key].iter().any(|v| v.trim().is_empty()) {
+      debug!("One or more OIDC environmental variables empty");
+      return Err(format!("One or more OIDC environmental variables empty").into());
+    }
+
     let redirect = std::env::var("OIDC_REDIRECT_URL")
         .unwrap_or_else(|_| format!("http://{}/auth/oidc/{}/callback", SocketAddr::from(([127, 0, 0, 1], 8000)), provider_key).to_string());
 

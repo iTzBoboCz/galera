@@ -76,6 +76,9 @@ pub struct AppState {
 
 #[tokio::main]
 async fn main() {
+  // Load environmental variables from .env if present (e.g. development environment)
+  dotenv::dotenv().ok();
+
   tracing_subscriber::registry()
     .with(
       tracing_subscriber::EnvFilter::try_from_default_env()
