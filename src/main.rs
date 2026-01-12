@@ -16,7 +16,7 @@ extern crate diesel;
 use axum_extra::routing::RouterExt;
 use dashmap::DashMap;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
-use tracing::{warn, info};
+use tracing::{error, info, warn};
 use crate::auth::secret::Secret;
 use crate::directories::Directories;
 use axum::{response::{Html, IntoResponse}, routing::get, Router, http::Request, middleware::{Next, self}, extract::{MatchedPath}, body::Body};
@@ -24,7 +24,7 @@ use deadpool_diesel::{Pool, Runtime, Manager};
 use diesel::{MysqlConnection};
 use diesel_migrations::MigrationHarness;
 use metrics_exporter_prometheus::{Matcher, PrometheusBuilder, PrometheusHandle};
-use std::{future::ready, net::SocketAddr, sync::Arc, time::Instant};
+use std::{future::ready, net::SocketAddr, process, sync::Arc, time::Instant};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use tower_http::trace::TraceLayer;
 use openidconnect::reqwest;
@@ -43,13 +43,18 @@ mod oidc;
 pub type ConnectionPool = Pool<Manager<MysqlConnection>>;
 pub type DbConn = deadpool::managed::Object<Manager<MysqlConnection>>;
 
-async fn create_db_pool() -> ConnectionPool {
-  let manager = Manager::<MysqlConnection>::new("mysql://root:root@localhost/galera", Runtime::Tokio1);
+async fn create_db_pool() -> Result<ConnectionPool, Box<dyn std::error::Error>> {
+  let Ok(database_url) = std::env::var("DATABASE_URL") else {
+    return Err(format!("DATABASE_URL not set").into());
+  };
 
-  Pool::builder(manager)
+  let manager = Manager::<MysqlConnection>::new(database_url, Runtime::Tokio1);
+
+  let pool = Pool::builder(manager)
     .max_size(8)
-    .build()
-    .unwrap()
+    .build()?;
+
+  Ok(pool)
 }
 
 #[derive(Clone)]
@@ -97,7 +102,14 @@ async fn main() {
 
   let recorder_handle = setup_metrics_recorder();
 
-  let pool = create_db_pool().await;
+  let pool = match create_db_pool().await {
+    Ok(pool) => pool,
+    Err(e) => {
+      error!("Couldn't connect to DB: {e}");
+      error!("Stopping server!");
+      process::exit(1)
+    }
+  };
 
   pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
   let _ = pool.get().await.unwrap().interact(|c| c.run_pending_migrations(MIGRATIONS).map(|_| ())).await.expect("Can't run migrations.");
