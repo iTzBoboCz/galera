@@ -173,9 +173,19 @@ pub async fn oidc_callback(
   debug!("OIDC login ok provider={} sub={} email={:?}", provider, sub, email);
 
   // 5) Find existing identity by (provider, sub)
-  if let Some(user) = db::oidc::get_user_by_oidc_subject(state.pool.get().await.unwrap(), provider.clone(), sub.clone()).await {
-    let claims = Claims::new(user.id);
-    return issue_login_response(state.pool, claims).await.into_response();
+  match db::oidc::get_user_by_oidc_subject(state.pool.get().await.unwrap(), provider.clone(), sub.clone()).await {
+    Ok(Some(user)) => {
+      let claims = Claims::new(user.id);
+      return issue_login_response(state.pool, claims).await.into_response();
+    }
+
+    // Continue to create a user
+    Ok(None) => {}
+
+    Err(e) => {
+      error!("DB error selecting oidc identity: {e}");
+      return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    }
   }
 
   // 6) Not found → signup gate

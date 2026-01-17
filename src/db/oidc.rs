@@ -1,18 +1,27 @@
 use chrono::{NaiveDateTime, Utc};
 use diesel::{BoolExpressionMethods, Connection, ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl, Table, };
+use tracing::error;
 
 use crate::{DbConn, models::{NewOidcIdentity, NewUser, OidcIdentity}, schema::{oidc_identity, user}};
 
 /// Tries to select a user by its ID.
-pub async fn get_user_by_oidc_subject(conn: DbConn, oidc_provider: String, oidc_subject: String) -> Option<OidcIdentity> {
-  conn.interact(move |c| {
+pub async fn get_user_by_oidc_subject(conn: DbConn, oidc_provider: String, oidc_subject: String) -> Result<Option<OidcIdentity>, diesel::result::Error> {
+  let result = conn.interact(move |c| {
     oidc_identity::table
       .select(oidc_identity::table::all_columns())
       .filter(oidc_identity::provider_key.eq(oidc_provider).and(oidc_identity::subject.eq(oidc_subject)))
       .first::<OidcIdentity>(c)
       .optional()
-      .unwrap()
-  }).await.unwrap()
+  }).await
+  .map_err(|e| {
+    error!("DB interact failed in get_user_by_oidc_subject: {e}");
+    diesel::result::Error::DatabaseError(
+      diesel::result::DatabaseErrorKind::Unknown,
+      Box::new(format!("interact failed: {e}")),
+    )
+  })??;
+
+  Ok(result)
 }
 
 /// Inserts OIDC-only user account (passwordless), returns user_id
