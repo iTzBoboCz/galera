@@ -176,6 +176,7 @@ async fn main() {
 
   let unprotected = Router::new()
     .route("/", get(handler))
+    .typed_get(routes::health)
     .route("/metrics", get(move || ready(recorder_handle.render())))
     .typed_get(routes::get_server_config)
     .typed_get(routes::oidc_login)

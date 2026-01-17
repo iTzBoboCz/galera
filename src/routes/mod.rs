@@ -36,6 +36,14 @@ use tokio_util::io::ReaderStream;
 //   "Hello, world!"
 // }
 
+#[derive(TypedPath)]
+#[typed_path("/health")]
+pub struct Health;
+
+pub async fn health(_: Health) -> StatusCode {
+  StatusCode::OK
+}
+
 #[derive(TypedPath, Deserialize)]
 #[typed_path("/auth/oidc/:provider/login")]
 pub struct OidcLogin {
