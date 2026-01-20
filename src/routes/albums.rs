@@ -62,18 +62,16 @@ pub async fn create_album(
   Extension(claims): Extension<Arc<Claims>>,
   Json(album_insert_data): Json<AlbumInsertData>
 ) -> Json<Option<AlbumResponse>> {
-  db::albums::insert_album(pool.get().await.unwrap(), claims.user_id, album_insert_data).await;
-
-  let Some(last_insert_id) = db::general::get_last_insert_id(pool.get().await.unwrap()).await else {
-    error!("Last insert id was not returned. This may happen if restarting MySQL during scanning.");
+  let Ok(album_id) = db::albums::insert_album(pool.get().await.unwrap(), claims.user_id, album_insert_data).await else {
+    error!("Problem when inserting an album.");
     return Json(None);
   };
 
-  let accessible = db::albums::user_has_album_access(pool.get().await.unwrap(), claims.user_id, last_insert_id).await;
+  let accessible = db::albums::user_has_album_access(pool.get().await.unwrap(), claims.user_id, album_id).await;
   if accessible.is_err() || !accessible.unwrap() { return Json(None); }
 
   // TODO: impl from u jiné struktury bez ID a hesla
-  let Some(album) = db::albums::select_album(pool.get().await.unwrap(), last_insert_id).await else {
+  let Some(album) = db::albums::select_album(pool.get().await.unwrap(), album_id).await else {
     return Json(None);
   };
 

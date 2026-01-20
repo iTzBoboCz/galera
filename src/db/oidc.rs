@@ -2,7 +2,7 @@ use chrono::{NaiveDateTime, Utc};
 use diesel::{BoolExpressionMethods, Connection, ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl, Table, };
 use tracing::error;
 
-use crate::{DbConn, models::{NewOidcIdentity, NewUser, OidcIdentity}, schema::{oidc_identity, user}};
+use crate::{DbConn, db::LastInsertId, models::{NewOidcIdentity, NewUser, OidcIdentity}, schema::{oidc_identity, user}};
 
 /// Tries to select a user by its ID.
 pub async fn get_user_by_oidc_subject(conn: DbConn, oidc_provider: String, oidc_subject: String) -> Result<Option<OidcIdentity>, diesel::result::Error> {
@@ -36,16 +36,9 @@ pub async fn insert_oidc_user(conn: DbConn, oidc_provider: String, oidc_subject:
         .values(new_user.clone())
         .execute(c)?;
 
-      // 2) get inserted id (MySQL)
-      #[derive(diesel::deserialize::QueryableByName)]
-      struct Row {
-        #[diesel(sql_type = diesel::sql_types::Integer)]
-        id: i32,
-      }
-
-      let Row { id: user_id } =
+      let LastInsertId { id: user_id } =
         diesel::sql_query("SELECT LAST_INSERT_ID() AS id")
-          .get_result::<Row>(c)?;
+          .get_result::<LastInsertId>(c)?;
 
       // 3) insert oidc identity
       let oidc = NewOidcIdentity {

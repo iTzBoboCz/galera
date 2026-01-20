@@ -4,7 +4,7 @@ use serde::{Serialize, Deserialize};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, TokenData, Validation};
 use tracing::error;
 use uuid::Uuid;
-use crate::{AppState, ConnectionPool, db::{self, tokens::{insert_access_token, insert_refresh_token, select_refresh_token_expiration}, users}};
+use crate::{AppState, ConnectionPool, db::{self, tokens::{insert_access_token, insert_refresh_token, insert_session_tokens, select_refresh_token_expiration}, users}};
 use crate::DbConn;
 use crate::auth::secret::Secret;
 use anyhow::{self, Context};
@@ -188,6 +188,11 @@ impl Claims {
     self.access_token.clone()
   }
 
+  pub async fn add_session_tokens_to_db(&self, pool: ConnectionPool) -> Result<(i32, i32), diesel::result::Error> {
+    insert_session_tokens(pool.get().await.unwrap(), self.user_id, self.refresh_token(), self.access_token()).await
+  }
+
+  #[allow(dead_code)]
   /// Adds a new refresh token to the database.
   /// # Example
   /// Adds the `refresh_token` of a bearer token for user with ID 1 to the database.
@@ -196,10 +201,8 @@ impl Claims {
   ///
   /// bearer_token.add_refresh_token_to_db(conn)
   /// ```
-  pub async fn add_refresh_token_to_db(&self, pool: ConnectionPool) -> Option<i32> {
-    insert_refresh_token(pool.get().await.unwrap(), self.user_id, self.refresh_token()).await;
-
-    Some(db::general::get_last_insert_id(pool.get().await.unwrap()).await?)
+  pub async fn add_refresh_token_to_db(&self, pool: ConnectionPool) -> Result<i32, diesel::result::Error> {
+    insert_refresh_token(pool.get().await.unwrap(), self.user_id, self.refresh_token()).await
   }
 
   /// Adds a new access token to the database.
@@ -211,10 +214,8 @@ impl Claims {
   /// let refresh_token_id = bearer_token.add_refresh_token_to_db(conn).await?;
   /// bearer_token.add_access_token_to_db(conn, refresh_token_id).await?;
   /// ```
-  pub async fn add_access_token_to_db(&self, pool: ConnectionPool, refresh_token_id: i32) -> Option<i32> {
-    insert_access_token(pool.get().await.unwrap(), refresh_token_id, self.access_token()).await;
-
-    Some(db::general::get_last_insert_id(pool.get().await.unwrap()).await?)
+  pub async fn add_access_token_to_db(&self, pool: ConnectionPool, refresh_token_id: i32) -> Result<i32, diesel::result::Error> {
+    insert_access_token(pool.get().await.unwrap(), refresh_token_id, self.access_token()).await
   }
 
   /// Deletes obsolete access tokens for a given refresh token ID from the database.

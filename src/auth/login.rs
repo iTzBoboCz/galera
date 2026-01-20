@@ -34,8 +34,7 @@ impl UserLogin {
     let token = Claims::new(user_id);
 
     // add refresh and access tokens to db
-    let refresh_token_id = token.add_refresh_token_to_db(pool.clone()).await?;
-    token.add_access_token_to_db(pool, refresh_token_id).await?;
+    token.add_session_tokens_to_db(pool).await.ok()?;
 
     Some(token)
   }

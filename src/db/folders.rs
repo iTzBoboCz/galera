@@ -1,3 +1,4 @@
+use crate::db::LastInsertId;
 use crate::models::{Folder, NewFolder};
 use crate::schema::folder;
 use crate::DbConn;
@@ -9,13 +10,19 @@ use diesel::RunQueryDsl;
 use diesel::Table;
 use std::path::PathBuf;
 
-pub async fn insert_folder(conn: DbConn, new_folder: NewFolder, name: String, path: PathBuf) {
-  let _ = conn.interact(move |c| {
+pub async fn insert_folder(conn: DbConn, new_folder: NewFolder) -> Result<i32, diesel::result::Error> {
+  conn.interact(move |c| {
     diesel::insert_into(folder::table)
       .values(new_folder)
-      .execute(c)
-      .unwrap_or_else(|_| panic!("Error scanning folder {} in {}", name, path.display().to_string()));
-  }).await;
+      .execute(c)?;
+
+    let LastInsertId { id: folder_id } =
+      diesel::sql_query("SELECT LAST_INSERT_ID() AS id")
+        .get_result::<LastInsertId>(c)?;
+
+    Ok(folder_id)
+  }).await
+  .map_err(|_| diesel::result::Error::RollbackTransaction)?
 }
 
 pub async fn select_child_folder_id(conn: DbConn, name: String, parent: Option<i32>, user_id: i32) -> Option<i32> {

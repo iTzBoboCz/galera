@@ -137,7 +137,7 @@ pub async fn refresh_token(
 
   Claims::delete_obsolete_access_tokens(pool.get().await.unwrap(), refresh_token_id).await;
 
-  if new_token.add_access_token_to_db(pool, refresh_token_id).await.is_none() { return Err(StatusCode::INTERNAL_SERVER_ERROR); }
+  if new_token.add_access_token_to_db(pool, refresh_token_id).await.is_err() { return Err(StatusCode::INTERNAL_SERVER_ERROR); }
 
   let Ok(new_encoded_token) = new_token.encode() else {
     return Err(StatusCode::INTERNAL_SERVER_ERROR);

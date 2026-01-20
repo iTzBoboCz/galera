@@ -1,8 +1,9 @@
+use crate::db::LastInsertId;
 use crate::models::{NewAuthAccessToken, NewAuthRefreshToken};
 use crate::{DbConn};
 use crate::schema::{auth_access_token, auth_refresh_token};
 use chrono::NaiveDateTime;
-use diesel::RunQueryDsl;
+use diesel::{Connection, RunQueryDsl};
 use diesel::QueryDsl;
 use diesel::OptionalExtension;
 use diesel::ExpressionMethods;
@@ -13,18 +14,19 @@ use diesel::ExpressionMethods;
 /// ```
 /// insert_access_token(&conn, 1, "<my_access_token>".to_string());
 /// ```
-pub async fn insert_refresh_token(conn: DbConn, user_id: i32, refresh_token: String) -> Option<()> {
-  let r: Result<usize, diesel::result::Error> = conn.interact(move |c| {
+pub async fn insert_refresh_token(conn: DbConn, user_id: i32, refresh_token: String) -> Result<i32, diesel::result::Error> {
+  conn.interact(move |c| {
     diesel::insert_into(auth_refresh_token::table)
       .values(NewAuthRefreshToken::new(user_id, refresh_token))
-      .execute(c)
-  }).await.unwrap();
+      .execute(c)?;
 
-  if r.is_err() {
-    return None;
-  }
+    let LastInsertId { id: refresh_token_id } =
+      diesel::sql_query("SELECT LAST_INSERT_ID() AS id")
+        .get_result::<LastInsertId>(c)?;
 
-  Some(())
+    Ok(refresh_token_id)
+  }).await
+  .map_err(|_| diesel::result::Error::RollbackTransaction)?
 }
 
 /// Selects refresh token ID from a given refresh token.
@@ -57,18 +59,19 @@ pub async fn select_refresh_token_expiration(conn: &mut DbConn, refresh_token: S
 /// ```
 /// insert_access_token(&conn, 20, "<my_access_token>".to_string());
 /// ```
-pub async fn insert_access_token(conn: DbConn, refresh_token_id: i32, access_token: String) -> Option<()> {
-  let r: Result<usize, diesel::result::Error> = conn.interact(move |c| {
+pub async fn insert_access_token(conn: DbConn, refresh_token_id: i32, access_token: String) -> Result<i32, diesel::result::Error> {
+  conn.interact(move |c| {
     diesel::insert_into(auth_access_token::table)
       .values(NewAuthAccessToken::new(refresh_token_id, access_token))
-      .execute(c)
-  }).await.unwrap();
+      .execute(c)?;
 
-  if r.is_err() {
-    return None;
-  }
+    let LastInsertId { id: access_token_id } =
+      diesel::sql_query("SELECT LAST_INSERT_ID() AS id")
+        .get_result::<LastInsertId>(c)?;
 
-  Some(())
+    Ok(access_token_id)
+  }).await
+  .map_err(|_| diesel::result::Error::RollbackTransaction)?
 }
 
 /// Deletes obsolete access tokens for a given refresh token.
@@ -80,4 +83,30 @@ pub async fn delete_obsolete_access_tokens(conn: DbConn, refresh_token_id: i32) 
     )
       .execute(c)
   }).await.unwrap()
+}
+
+pub async fn insert_session_tokens(conn: DbConn, user_id: i32, refresh_token: String, access_token: String) -> Result<(i32, i32), diesel::result::Error> {
+  conn.interact(move |c| {
+    c.transaction::<(i32, i32), diesel::result::Error, _>(|c| {
+      diesel::insert_into(auth_refresh_token::table)
+        .values(NewAuthRefreshToken::new(user_id, refresh_token))
+        .execute(c)?;
+
+      let LastInsertId { id: refresh_token_id } =
+        diesel::sql_query("SELECT LAST_INSERT_ID() AS id")
+          .get_result::<LastInsertId>(c)?;
+
+
+      diesel::insert_into(auth_access_token::table)
+        .values(NewAuthAccessToken::new(refresh_token_id, access_token))
+        .execute(c)?;
+
+      let LastInsertId { id: access_token_id } =
+        diesel::sql_query("SELECT LAST_INSERT_ID() AS id")
+          .get_result::<LastInsertId>(c)?;
+
+      Ok((refresh_token_id, access_token_id))
+    })
+  }).await
+  .map_err(|_| diesel::result::Error::RollbackTransaction)?
 }

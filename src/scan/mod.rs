@@ -40,12 +40,12 @@ pub fn is_media_supported(pathbuf: &Path) -> bool {
     "audio/aac",
   ];
 
-  let kind = infer::get_from_path(pathbuf).unwrap();
+  let Ok(Some(kind)) = infer::get_from_path(pathbuf) else {
+    return false;
+  };
 
-  if kind.is_none() { return false; }
-
-  if valid_mime_types.contains(&kind.unwrap().mime_type()) {
-    trace!("Found: {:?} with type: {:?}", pathbuf, kind.unwrap().mime_type());
+  if valid_mime_types.contains(&kind.mime_type()) {
+    trace!("Found: {:?} with type: {:?}", pathbuf, kind.mime_type());
 
     return true;
   }
@@ -147,16 +147,12 @@ pub async fn add_folders_to_db(pool: ConnectionPool, relative_paths: Vec<PathBuf
       if folder_id.is_none() {
         let new_folder = NewFolder::new(user_id, s.clone(), parent);
 
-        db::folders::insert_folder(pool.get().await.unwrap(), new_folder, s, path.clone()).await;
-
-        let last_insert_id = db::general::get_last_insert_id(pool.get().await.unwrap()).await;
-
-        if last_insert_id.is_none() {
-          error!("Last insert id was not returned. This may happen if restarting MySQL during scanning.");
+        let Ok(last_insert_id) = db::folders::insert_folder(pool.get().await.unwrap(), new_folder).await else {
+          error!("Error scanning folder {} in {}", s, path.display().to_string());
           return;
-        }
+        };
 
-        parent = Some(last_insert_id.unwrap());
+        parent = Some(last_insert_id);
       } else {
         parent = folder_id;
       }
@@ -165,18 +161,15 @@ pub async fn add_folders_to_db(pool: ConnectionPool, relative_paths: Vec<PathBuf
 }
 
 pub async fn scan_folders_for_media(pool: ConnectionPool, xdg_data: PathBuf, user_id: i32) {
-  let username_option = db::users::get_user_username(pool.get().await.unwrap(), user_id).await;
-  if username_option.is_none() { return; }
+  let Some(username) = db::users::get_user_username(pool.get().await.unwrap(), user_id).await else {
+    return;
+  };
 
-  let username = username_option.unwrap();
+  let Ok(Some(root_folder)) = db::folders::select_root_folder(pool.get().await.unwrap(), user_id).await else {
+    return;
+  };
 
-  let root_folder_result = db::folders::select_root_folder(pool.get().await.unwrap(), user_id).await;
-  if root_folder_result.is_err() { return }
-
-  let root_folder_option = root_folder_result.unwrap();
-  if root_folder_option.is_none() { return }
-
-  scan_select(pool, root_folder_option.unwrap(), None, xdg_data, user_id, username.clone());
+  scan_select(pool, root_folder, None, xdg_data, user_id, username.clone());
 }
 
 pub fn scan_select(pool: ConnectionPool, parent_folder: Folder, mut path: Option<PathBuf>, xdg_data: PathBuf, user_id: i32, username: String) {
@@ -197,10 +190,9 @@ pub fn scan_select(pool: ConnectionPool, parent_folder: Folder, mut path: Option
 /// Scans user's folder for media
 pub fn scan_folder_media(pool: ConnectionPool, parent_folder: Folder, path: PathBuf, user_id: i32) {
   // get files in a folder
-  let media_scanned_option = folder_get_media(path);
-  if media_scanned_option.is_none() { return; }
-
-  let media_scanned_vec = media_scanned_option.unwrap();
+  let Some(media_scanned_vec) = folder_get_media(path) else {
+    return;
+  };
 
   if media_scanned_vec.is_empty() { return; }
 

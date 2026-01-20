@@ -1,3 +1,4 @@
+use crate::db::LastInsertId;
 use crate::models::{Album, AlbumShareLink, Media, NewAlbum, NewAlbumMedia, NewAlbumShareLink};
 use crate::routes::albums::{AlbumInsertData, AlbumShareLinkInsert, AlbumUpdateData};
 use crate::schema::{album, album_media, album_share_link, media};
@@ -48,14 +49,20 @@ pub async fn select_album_id(conn: DbConn, album_uuid: String) -> Option<i32> {
   }).await.unwrap()
 }
 
-pub async fn insert_album(conn: DbConn, user_id: i32, album_insert_data: AlbumInsertData) {
-  let new_album = NewAlbum::new(user_id, album_insert_data.name, album_insert_data.description, None);
+pub async fn insert_album(conn: DbConn, user_id: i32, AlbumInsertData { name, description }: AlbumInsertData) -> Result<i32, diesel::result::Error> {
+  let new_album = NewAlbum::new(user_id, name, description, None);
   conn.interact(move |c| {
     diesel::insert_into(album::table)
-      .values(new_album.clone())
-      .execute(c)
-      .unwrap_or_else(|_| panic!("Could not add a new album for user with ID {}", new_album.owner_id));
-  }).await.unwrap();
+      .values(new_album)
+      .execute(c)?;
+
+    let LastInsertId { id: album_id } =
+      diesel::sql_query("SELECT LAST_INSERT_ID() AS id")
+        .get_result::<LastInsertId>(c)?;
+
+    Ok(album_id)
+  }).await
+  .map_err(|_| diesel::result::Error::RollbackTransaction)?
 }
 
 pub async fn get_album_list(conn: DbConn, user_id: i32) -> Vec<Album> {
