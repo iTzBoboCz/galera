@@ -13,14 +13,14 @@ axum = { version = "0.8.8" }
 axum-extra = { version = "0.12.5", features = ["typed-routing", "typed-header"] }
 
 # Database
-deadpool = { version = "0.10.0", features = ["rt_tokio_1", "serde", "async-trait", "managed" ] }
-deadpool-diesel = { version = "0.5.0", features = ["serde","rt_tokio_1"] }
-diesel = { version = "2.1.4", features = ["mysql", "chrono"] }
-diesel_migrations = "2.1.0"
+deadpool = { version = "0.12.3", features = ["rt_tokio_1", "serde", "managed" ] }
+deadpool-diesel = { version = "0.6.1", features = ["serde","rt_tokio_1"] }
+diesel = { version = "2.3.5", features = ["mysql", "chrono"] }
+diesel_migrations = "2.3.1"
 
 # Logging
-metrics = "0.21.1"
-metrics-exporter-prometheus = "0.12.1"
+metrics = "0.24.3"
+metrics-exporter-prometheus = "0.18.1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
@@ -29,34 +29,34 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # okapi = { version = "0.7.0-rc.1" }
 
 # Validation
-email_address = "0.2.4"
-lazy-regex = "3.1.0"
+email_address = "0.2.9"
+lazy-regex = "3.5.1"
 
 # Media
-infer = "0.15.0"
-image = "0.24.7"
+infer = "0.19.0"
+image = "0.25.9"
 
 # Utilities
-serde_json = "1.0.108"
-serde = { version = "1.0.193", features = ["derive"] }
+serde_json = "1.0.149"
+serde = { version = "1.0.228", features = ["derive"] }
 dotenv = "0.15.0"
-chrono = { version = "0.4.31", features = ["serde"] }
+chrono = { version = "0.4.43", features = ["serde"] }
 checksums = "0.9.1"
-futures = "0.3.29"
-uuid = { version = "1.6.1", features = ["v4"] }
+futures = "0.3.31"
+uuid = { version = "1.19.0", features = ["v4"] }
 # schemars = { version = "0.8.6", features = ["chrono"] }
 jsonwebtoken = "7.2.0"
-rand = "0.8.5"
-sha2 = "0.10.8"
-anyhow = "1.0.75"
-directories = "5.0.1"
+rand = "0.9.2"
+sha2 = "0.10.9"
+anyhow = "1.0.100"
+directories = "6.0.0"
 nanoid = "0.4.0"
 sys-info = "0.9.1"
-base64 = "0.21.5"
-walkdir = "2.4.0"
-tokio = { version = "1.34.0", features = ["full"] }
-tokio-util = { version = "0.7.10", features = ["io"]}
-tower-http = { version = "0.5.0", features = ["cors", "trace"] }
+base64 = "0.22.1"
+walkdir = "2.5.0"
+tokio = { version = "1.49.0", features = ["full"] }
+tokio-util = { version = "0.7.18", features = ["io"]}
+tower-http = { version = "0.6.8", features = ["cors", "trace"] }
 openidconnect = { version = "4.0.1", features = ["reqwest"] }
 reqwest = "0.13.1"
 dashmap = "6.1.0"

@@ -101,14 +101,13 @@ impl Claims {
 
   /// Checks whether the refresh token is expired or not.
   pub async fn is_refresh_token_expired(&self, mut conn: DbConn) -> bool {
-    let refresh_token_exp = select_refresh_token_expiration(&mut conn, self.refresh_token.clone()).await;
-    if refresh_token_exp.is_none() {
+    let Some(refresh_token_exp) = select_refresh_token_expiration(&mut conn, self.refresh_token.clone()).await else {
       return true;
-    }
+    };
 
-    let current_time = Utc::now().timestamp();
+    let current_time = Utc::now();
 
-    refresh_token_exp.unwrap().timestamp() < current_time
+    refresh_token_exp.and_utc() < current_time
   }
 
   /// Checks the validity of a bearer token.

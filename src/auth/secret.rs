@@ -1,4 +1,4 @@
-use rand::{Rng, distributions::Alphanumeric, thread_rng};
+use rand::{Rng, distr::Alphanumeric, rng};
 use std::fs;
 
 pub struct Secret {
@@ -12,9 +12,9 @@ impl Secret {
   /// let my_secret_string = Secret::generate();
   /// ```
   fn generate() -> String {
-    let mut rng = thread_rng();
+    let mut rng = rng();
 
-    let range = rng.gen_range(256..512);
+    let range = rng.random_range(256..512);
 
     String::from_utf8(
       rng
