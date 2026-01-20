@@ -25,7 +25,7 @@ pub struct MediaResponse {
   pub width: u32,
   pub height: u32,
   pub description: Option<String>,
-  pub date_taken: NaiveDateTime,
+  pub date_taken: Option<NaiveDateTime>,
   pub uuid: String,
 }
 

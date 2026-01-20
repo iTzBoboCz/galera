@@ -1,0 +1,2 @@
+ALTER TABLE media
+  MODIFY date_taken TIMESTAMP NULL;

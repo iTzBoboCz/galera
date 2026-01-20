@@ -407,11 +407,11 @@ pub struct AlbumShareLinkBasic {
 
 impl AlbumShareLinkBasic {
   pub fn new(album_share_link: AlbumShareLink, album_uuid: String) -> Self {
-    let current_time = NaiveDateTime::from_timestamp(Utc::now().timestamp(), 0);
+    let current_time = Utc::now().naive_utc();
 
     Self {
       album_uuid,
-      is_expired: album_share_link.expiration.is_some() && album_share_link.expiration.unwrap() < current_time,
+      is_expired: album_share_link.expiration.is_some_and(|exp| exp < current_time),
       is_password_protected: album_share_link.password.is_some()
      }
   }

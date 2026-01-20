@@ -3,7 +3,6 @@ use crate::schema::{favorite_media, media};
 use crate::routes::media::MediaResponse;
 use crate::DbConn;
 use checksums::{hash_file, Algorithm::SHA2512};
-use chrono::NaiveDateTime;
 use diesel::BoolExpressionMethods;
 use diesel::ExpressionMethods;
 use diesel::OptionalExtension;
@@ -35,7 +34,7 @@ pub async fn check_if_media_present(conn: DbConn, name: String, parent_folder: F
 pub async fn insert_media(conn: DbConn, name: String, parent_folder: Folder, user_id: i32, image_dimensions: (u32, u32), description: Option<String>, media_scanned: PathBuf) {
   conn.interact(move |c| {
     let uuid = Uuid::new_v4().to_string();
-    let new_media = NewMedia::new(name.clone(), parent_folder.id, user_id, image_dimensions.0, image_dimensions.1, description, NaiveDateTime::from_timestamp(10, 10), uuid, hash_file(&media_scanned, SHA2512));
+    let new_media = NewMedia::new(name.clone(), parent_folder.id, user_id, image_dimensions.0, image_dimensions.1, description, None, uuid, hash_file(&media_scanned, SHA2512));
 
     diesel::insert_into(media::table)
       .values(new_media)

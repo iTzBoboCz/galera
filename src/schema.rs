@@ -99,7 +99,7 @@ diesel::table! {
     height -> Unsigned<Integer>,
     #[max_length = 255]
     description -> Nullable<Varchar>,
-    date_taken -> Timestamp,
+    date_taken -> Nullable<Timestamp>,
     #[max_length = 36]
     uuid -> Varchar,
     #[max_length = 128]
