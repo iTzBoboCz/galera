@@ -155,22 +155,22 @@ async fn main() {
   };
 
   let protected = Router::new()
-    .typed_get(routes::media_structure)
-    .typed_get(routes::get_media_by_uuid)
-    .typed_post(routes::create_album)
-    .typed_get(routes::album_add_media)
-    .typed_get(routes::get_album_list)
-    .typed_put(routes::update_album)
-    .typed_delete(routes::delete_album)
-    .typed_put(routes::media_update_description)
-    .typed_delete(routes::media_delete_description)
-    .typed_get(routes::get_media_liked_list)
-    .typed_post(routes::media_like)
-    .typed_delete(routes::media_unlike)
-    .typed_get(routes::get_album_share_links)
-    .typed_post(routes::create_album_share_link)
-    .typed_put(routes::update_album_share_link)
-    .typed_delete(routes::delete_album_share_link)
+    .typed_get(routes::media::media_structure)
+    .typed_get(routes::media::get_media_by_uuid)
+    .typed_post(routes::albums::create_album)
+    .typed_get(routes::albums::album_add_media)
+    .typed_get(routes::albums::get_album_list)
+    .typed_put(routes::albums::update_album)
+    .typed_delete(routes::albums::delete_album)
+    .typed_put(routes::media::media_update_description)
+    .typed_delete(routes::media::media_delete_description)
+    .typed_get(routes::media::get_media_liked_list)
+    .typed_post(routes::media::media_like)
+    .typed_delete(routes::media::media_unlike)
+    .typed_get(routes::albums::get_album_share_links)
+    .typed_post(routes::albums::create_album_share_link)
+    .typed_put(routes::albums::update_album_share_link)
+    .typed_delete(routes::albums::delete_album_share_link)
     .typed_get(routes::scan_media)
     .route_layer(middleware::from_fn_with_state(state.clone(), auth::token::auth));
 
@@ -184,11 +184,11 @@ async fn main() {
     .typed_post(routes::create_user)
     .typed_post(routes::login)
     .typed_post(routes::refresh_token)
-    .typed_get(routes::get_album_share_link)
+    .typed_get(routes::albums::get_album_share_link)
     .typed_get(routes::system_info_public);
 
   let mixed_auth = Router::new()
-    .typed_get(routes::get_album_structure)
+    .typed_get(routes::albums::get_album_structure)
     .route_layer(middleware::from_fn_with_state(state.clone(), auth::token::mixed_auth));
 
   // build our application with a route

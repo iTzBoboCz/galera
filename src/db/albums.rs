@@ -1,5 +1,5 @@
 use crate::models::{Album, AlbumShareLink, Media, NewAlbum, NewAlbumMedia, NewAlbumShareLink};
-use crate::routes::{AlbumInsertData, AlbumShareLinkInsert, AlbumUpdateData};
+use crate::routes::albums::{AlbumInsertData, AlbumShareLinkInsert, AlbumUpdateData};
 use crate::schema::{album, album_media, album_share_link, media};
 use crate::DbConn;
 use diesel::BoolExpressionMethods;

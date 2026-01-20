@@ -1,6 +1,6 @@
 use crate::models::*;
 use crate::schema::{favorite_media, media};
-use crate::routes::MediaResponse;
+use crate::routes::media::MediaResponse;
 use crate::DbConn;
 use checksums::{hash_file, Algorithm::SHA2512};
 use chrono::NaiveDateTime;
