@@ -183,7 +183,7 @@ pub async fn get_album_structure(
       // }
 
       // TODO: check if non-owner user has permission to access the album (preparation for shared albums)
-  } else if let Some(special) = request.extensions().get::<Arc<SharedAlbumLinkSecurity>>() {
+  } else if let Some(_special) = request.extensions().get::<Arc<SharedAlbumLinkSecurity>>() {
     // TODO: maybe check more things
   } else {
     return Err(StatusCode::UNAUTHORIZED);

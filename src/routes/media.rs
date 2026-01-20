@@ -91,7 +91,7 @@ pub async fn get_media_by_uuid(
 
     // TODO: check if non-owner user has permission to access the album (preparation for shared albums)
 
-  } else if let Some(special) = request.extensions().get::<Arc<SharedAlbumLinkSecurity>>() {
+  } else if let Some(_special) = request.extensions().get::<Arc<SharedAlbumLinkSecurity>>() {
     // TODO: maybe check more things
   } else {
     return Err(StatusCode::UNAUTHORIZED);
