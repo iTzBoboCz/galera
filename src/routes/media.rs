@@ -2,6 +2,7 @@ use std::sync::Arc;
 use crate::auth::shared_album_link::SharedAlbumLinkSecurity;
 use crate::auth::token::Claims;
 use crate::db;
+use crate::db::media::select_media_by_uuid;
 use crate::directories::Directories;
 use crate::models::{Folder, Media};
 use axum::Extension;
@@ -13,15 +14,7 @@ use axum_extra::routing::TypedPath;
 use chrono::NaiveDateTime;
 use tracing::error;
 use crate::{AppState, scan};
-use crate::schema::media;
-use diesel::ExpressionMethods;
-
-use diesel::QueryDsl;
-use diesel::RunQueryDsl;
-use diesel::Table;
-// use rocket::{fs::NamedFile, http::Status};
 use serde::{Deserialize, Serialize};
-// use schemars::JsonSchema;
 use tokio_util::io::ReaderStream;
 
 // #[derive(JsonSchema)]
@@ -78,13 +71,18 @@ pub async fn get_media_by_uuid(
   State(AppState { pool,.. }): State<AppState>,
   request: Request<Body>
 ) -> Result<Body, StatusCode> {
-  let Ok(media) = pool.get().await.unwrap().interact(|c| {
-    media::table
-      .select(media::table::all_columns())
-      .filter(media::dsl::uuid.eq(media_uuid))
-      .first::<Media>(c)
-      .unwrap()
-  }).await else { return Err(StatusCode::NOT_FOUND) };
+  let media = match select_media_by_uuid(pool.get().await.unwrap(), media_uuid).await {
+    Ok(Some(media)) => media,
+
+    Ok(None) => {
+      return Err(StatusCode::NOT_FOUND)
+    }
+
+    Err(e) => {
+      error!("DB error selecting oidc identity: {e}");
+      return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+  };
 
   if let Some(claims) = request.extensions().get::<Arc<Claims>>() {
     if media.owner_id != claims.user_id {

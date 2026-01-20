@@ -10,6 +10,7 @@ use diesel::OptionalExtension;
 use diesel::QueryDsl;
 use diesel::RunQueryDsl;
 use diesel::Table;
+use tracing::error;
 use std::path::PathBuf;
 use uuid::Uuid;
 
@@ -74,6 +75,25 @@ pub async fn select_media_id(conn: DbConn, media_uuid: String) -> Option<i32> {
       .optional()
       .unwrap()
   }).await.unwrap()
+}
+
+pub async fn select_media_by_uuid(conn: DbConn, media_uuid: String) -> Result<Option<Media>, diesel::result::Error> {
+  let result = conn.interact(|c| {
+    media::table
+      .select(media::table::all_columns())
+      .filter(media::dsl::uuid.eq(media_uuid))
+      .first::<Media>(c)
+      .optional()
+    }).await
+  .map_err(|e| {
+    error!("DB interact failed in select_media_by_uuid: {e}");
+    diesel::result::Error::DatabaseError(
+      diesel::result::DatabaseErrorKind::Unknown,
+      Box::new(format!("interact failed: {e}")),
+    )
+  })??;
+
+  Ok(result)
 }
 
 /// Checks whether a user has access to the media.
