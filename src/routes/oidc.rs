@@ -13,7 +13,7 @@ use tracing::{debug, error, warn};
 use crate::{AppState, db};
 
 #[derive(TypedPath, Deserialize)]
-#[typed_path("/auth/oidc/:provider/login")]
+#[typed_path("/auth/oidc/{provider}/login")]
 pub struct OidcLogin {
   pub provider: String,
 }
@@ -57,7 +57,7 @@ pub async fn oidc_login(
 
 
 #[derive(TypedPath, Deserialize)]
-#[typed_path("/auth/oidc/:provider/callback")]
+#[typed_path("/auth/oidc/{provider}/callback")]
 pub struct OidcCallback {
   pub provider: String,
 }

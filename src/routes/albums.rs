@@ -150,7 +150,7 @@ pub async fn get_album_list(
 }
 
 #[derive(TypedPath, Deserialize)]
-#[typed_path("/album/:album_uuid/media")]
+#[typed_path("/album/{album_uuid}/media")]
 pub struct AlbumUuidMediaRoute {
   album_uuid: String,
 }
@@ -201,7 +201,7 @@ pub async fn get_album_structure(
 }
 
 #[derive(TypedPath, Deserialize)]
-#[typed_path("/album/:album_uuid")]
+#[typed_path("/album/{album_uuid}")]
 pub struct AlbumUuidRoute {
   album_uuid: String,
 }
@@ -314,7 +314,7 @@ pub struct SharedAlbumLinkResponse {
 
 
 #[derive(TypedPath, Deserialize)]
-#[typed_path("/album/:album_uuid/share/link")]
+#[typed_path("/album/{album_uuid}/share/link")]
 pub struct AlbumUuidShareLinkRoute {
   album_uuid: String,
 }
@@ -418,7 +418,7 @@ impl AlbumShareLinkBasic {
 }
 
 #[derive(TypedPath, Deserialize)]
-#[typed_path("/album/share/link/:album_share_link_uuid")]
+#[typed_path("/album/share/link/{album_share_link_uuid}")]
 pub struct AlbumShareLinkUuidRoute {
   album_share_link_uuid: String,
 }

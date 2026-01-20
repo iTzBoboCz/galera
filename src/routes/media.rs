@@ -60,7 +60,7 @@ pub async fn media_structure(
 }
 
 #[derive(TypedPath, Deserialize)]
-#[typed_path("/media/:media_uuid")]
+#[typed_path("/media/{media_uuid}")]
 pub struct MediaUuidRoute {
   media_uuid: String,
 }
@@ -136,7 +136,7 @@ pub struct MediaDescription {
 }
 
 #[derive(TypedPath, Deserialize)]
-#[typed_path("/media/:media_uuid/description")]
+#[typed_path("/media/{media_uuid}/description")]
 pub struct MediaUuidDescriptionRoute {
   media_uuid: String,
 }
@@ -215,7 +215,7 @@ pub async fn get_media_liked_list(
 }
 
 #[derive(TypedPath, Deserialize)]
-#[typed_path("/media/:media_uuid/like")]
+#[typed_path("/media/{media_uuid}/like")]
 pub struct MediaUuidLikeRoute {
   media_uuid: String,
 }
