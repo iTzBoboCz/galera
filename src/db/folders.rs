@@ -8,7 +8,6 @@ use diesel::OptionalExtension;
 use diesel::QueryDsl;
 use diesel::RunQueryDsl;
 use diesel::Table;
-use std::path::PathBuf;
 
 pub async fn insert_folder(conn: DbConn, new_folder: NewFolder) -> Result<i32, diesel::result::Error> {
   conn.interact(move |c| {
