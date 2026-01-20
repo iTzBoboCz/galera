@@ -53,6 +53,7 @@ pub fn is_media_supported(pathbuf: &Path) -> bool {
   false
 }
 
+#[allow(dead_code)]
 pub struct Scan {
   user_id: i32,
   username: String,

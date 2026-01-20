@@ -2,7 +2,7 @@ use axum::{extract::State, middleware::Next, http::{StatusCode, Request}, respon
 use axum_extra::{TypedHeader, headers::{Authorization, authorization}};
 use serde::{Serialize, Deserialize};
 use sha2::Digest;
-use crate::{AppState, ConnectionPool, db::albums::{select_album, select_album_share_link_by_uuid}};
+use crate::{AppState, db::albums::{select_album, select_album_share_link_by_uuid}};
 use std::{str, sync::Arc};
 
 // #[derive(JsonSchema)]

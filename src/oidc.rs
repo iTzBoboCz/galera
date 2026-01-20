@@ -3,7 +3,7 @@ use openidconnect::{
 };
 use tracing::debug;
 
-use std::{net::SocketAddr, time::Instant};
+use std::time::Instant;
 use openidconnect::Nonce;
 
 /// Stores temporary data between /login and /callback

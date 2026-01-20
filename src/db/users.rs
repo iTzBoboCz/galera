@@ -56,6 +56,7 @@ pub async fn is_user_unique(conn: DbConn, user: NewUser) -> bool {
   }).await.unwrap()
 }
 
+#[allow(dead_code)]
 /// Gets user's ID from username.
 /// # Example
 /// We're selecting user with username michael.
@@ -102,6 +103,7 @@ pub async fn get_user_by_id(conn: DbConn, user_id: i32) -> Option<User> {
   }).await.unwrap()
 }
 
+#[allow(dead_code)]
 /// Tries to select a user ID from a given email.
 pub async fn get_user_id_email(conn: DbConn, email: String) -> Option<i32> {
   conn.interact(move |c| {

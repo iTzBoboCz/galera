@@ -144,7 +144,7 @@ pub async fn oidc_callback(
   match db::oidc::get_user_by_oidc_subject(state.pool.get().await.unwrap(), provider.clone(), sub.clone()).await {
     Ok(Some(user)) => {
       let claims = Claims::new(user.id);
-      return crate::routes::issue_login_response(state.pool, claims).await.into_response();
+      return issue_login_response(state.pool, claims).await.into_response();
     }
 
     // Continue to create a user
