@@ -1,4 +1,3 @@
-use chrono::{NaiveDateTime, Utc};
 use diesel::{BoolExpressionMethods, Connection, ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl, Table, };
 use tracing::error;
 
@@ -44,8 +43,7 @@ pub async fn insert_oidc_user(conn: DbConn, oidc_provider: String, oidc_subject:
       let oidc = NewOidcIdentity {
         provider_key: oidc_provider,
         subject: oidc_subject,
-        user_id,
-        created_at: NaiveDateTime::from_timestamp(Utc::now().timestamp(), 0)
+        user_id
       };
 
       diesel::insert_into(oidc_identity::table)

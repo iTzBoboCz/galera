@@ -1,0 +1,2 @@
+ALTER TABLE `album`
+  MODIFY `created_at` TIMESTAMP NOT NULL;

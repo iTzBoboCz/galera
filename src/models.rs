@@ -150,18 +150,15 @@ pub struct NewAlbum {
   pub owner_id: i32,
   pub name: String,
   pub description: Option<String>,
-  pub created_at: NaiveDateTime,
   pub link: String,
   pub password: Option<String>,
 }
 
 impl NewAlbum {
   pub fn new(owner_id: i32, name: String, description: Option<String>, password: Option<String>) -> NewAlbum {
-    let timestamp = Utc::now().timestamp();
-    let created_at = NaiveDateTime::from_timestamp(timestamp, 0);
     let link = nanoid!();
 
-    NewAlbum { owner_id, name, description, created_at, link, password }
+    NewAlbum { owner_id, name, description, link, password }
   }
 }
 
@@ -382,5 +379,4 @@ pub struct NewOidcIdentity {
   pub provider_key: String,
   pub subject: String,
   pub user_id: i32,
-  pub created_at: NaiveDateTime,
 }
