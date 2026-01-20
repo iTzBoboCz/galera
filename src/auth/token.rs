@@ -67,7 +67,13 @@ impl ClaimsEncoded {
   }
 
   pub fn decode_without_validation(self) -> Result<TokenData<Claims>, jsonwebtoken::errors::Error> {
-    Ok(jsonwebtoken::dangerous_insecure_decode::<Claims>(self.encoded_claims.as_str())?)
+    let secret = Secret::read().context("Secret couldn't be read.").unwrap();
+
+    let mut v = Validation::new(Algorithm::HS512);
+    v.validate_exp = false;
+
+    Ok(jsonwebtoken::decode::<Claims>(self.encoded_claims.as_str(), &DecodingKey::from_secret(secret.as_ref()),
+    &v)?)
   }
 }
 
