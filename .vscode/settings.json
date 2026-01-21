@@ -1,8 +1,12 @@
 {
+  "[rust]": {
+    "editor.defaultFormatter": "rust-lang.rust-analyzer",
+    // "editor.formatOnSave": true
+  },
   "files.exclude": {
     "**/.git": true,
     "**/.DS_Store": true,
     "**/target": true,
-    "**/gallery": true,
+    "**/gallery": true
   }
 }
