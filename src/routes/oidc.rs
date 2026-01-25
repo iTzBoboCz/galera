@@ -2,6 +2,7 @@ use std::time::Instant;
 use crate::auth::token::Claims;
 use crate::auth::login::LoginResponse;
 use crate::db::oidc::insert_oidc_user;
+use crate::openapi::tags::{AUTH, AUTH_PUBLIC, OIDC, OTHER};
 use crate::routes::issue_login_response;
 use axum::extract::{Query, State};
 use axum::response::{IntoResponse, Redirect};
@@ -23,6 +24,10 @@ pub struct OidcLogin {
 #[utoipa::path(
   get,
   path = "/auth/oidc/{provider}/login",
+  params(
+    ("provider" = String, Path, description = "OIDC provider key")
+  ),
+  tags = [ AUTH, OIDC, AUTH_PUBLIC ],
   responses(
     (status = 302, description = "Redirect to OIDC provider"),
     (status = 404, description = "OIDC provider not found")
@@ -84,6 +89,8 @@ pub struct OidcCallbackQuery {
 #[utoipa::path(
   get,
   path = "/auth/oidc/{provider}/callback",
+  tags = [ AUTH, OIDC, AUTH_PUBLIC ],
+
   params(
     ("provider" = String, Path, description = "OIDC provider key"),
     ("code" = String, Query, description = "Authorization code"),
@@ -222,6 +229,7 @@ pub struct ServerConfig;
 #[utoipa::path(
   get,
   path = "/public/config",
+  tags = [ OIDC, OTHER, AUTH_PUBLIC ],
   responses(
     (status = 200, description = "Server config", body = ServerConfigResponse)
   )

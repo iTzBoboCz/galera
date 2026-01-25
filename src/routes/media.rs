@@ -5,7 +5,7 @@ use crate::db;
 use crate::db::media::select_media_by_uuid;
 use crate::directories::Directories;
 use crate::models::{Folder, Media};
-use crate::openapi::tags::AUTH_PROTECTED;
+use crate::openapi::tags::{AUTH_PROTECTED, MEDIA};
 use axum::Extension;
 use axum::body::Body;
 use axum::extract::State;
@@ -52,7 +52,7 @@ pub struct MediaRoute;
   get,
   path = "/media",
   security(("BearerAuth" = [])),
-  tags = [ "media", "auth:protected" ],
+  tags = [ MEDIA, AUTH_PROTECTED ],
   responses(
     (status = 200, description = "List of media", body = Vec<MediaResponse>),
     (status = 401, description = "Unauthorized"),
@@ -79,10 +79,11 @@ pub struct MediaUuidRoute {
 #[utoipa::path(
   get,
   path = "/media/{media_uuid}",
-  tags = ["media", AUTH_PROTECTED],
-  security(
-    ("BearerAuth" = []),
+  params(
+    ("media_uuid" = String, Path, description = "Media UUID")
   ),
+  security(("BearerAuth" = [])),
+  tags = [ MEDIA, AUTH_PROTECTED ],
   responses(
     (status = 200, description = "Binary media stream", content_type = "application/octet-stream", body = Vec<u8>),
     (status = 401, description = "Unauthorized"),
@@ -168,8 +169,12 @@ pub struct MediaUuidDescriptionRoute {
 #[utoipa::path(
   put,
   path = "/media/{media_uuid}/description",
-  security(("BearerAuth" = [])),
   request_body = MediaDescription,
+  params(
+    ("media_uuid" = String, Path, description = "Media UUID")
+  ),
+  security(("BearerAuth" = [])),
+  tags = [ MEDIA, AUTH_PROTECTED ],
   responses(
     (status = 200, description = "Description updated"),
     (status = 401, description = "Unauthorized"),
@@ -211,7 +216,11 @@ pub async fn media_update_description(
 #[utoipa::path(
   delete,
   path = "/media/{media_uuid}/description",
+  params(
+    ("media_uuid" = String, Path, description = "Media UUID")
+  ),
   security(("BearerAuth" = [])),
+  tags = [ MEDIA, AUTH_PROTECTED ],
   responses(
     (status = 200, description = "Description deleted"),
     (status = 401, description = "Unauthorized"),
@@ -250,6 +259,7 @@ pub struct MediaLikedRoute;
   get,
   path = "/media/liked",
   security(("BearerAuth" = [])),
+  tags = [ MEDIA, AUTH_PROTECTED ],
   responses(
     (status = 200, description = "Liked media", body = Vec<MediaResponse>),
     (status = 401, description = "Unauthorized"),
@@ -282,7 +292,11 @@ pub struct MediaUuidLikeRoute {
 #[utoipa::path(
   post,
   path = "/media/{media_uuid}/like",
+  params(
+    ("media_uuid" = String, Path, description = "Media UUID")
+  ),
   security(("BearerAuth" = [])),
+  tags = [ MEDIA, AUTH_PROTECTED ],
   responses(
     (status = 200, description = "Liked a media"),
     (status = 401, description = "Unauthorized"),
@@ -314,7 +328,11 @@ pub async fn media_like(
 #[utoipa::path(
   delete,
   path = "/media/{media_uuid}/like",
+  params(
+    ("media_uuid" = String, Path, description = "Media UUID")
+  ),
   security(("BearerAuth" = [])),
+  tags = [ MEDIA, AUTH_PROTECTED ],
   responses(
     (status = 200, description = "Unliked a media"),
     (status = 204, description = "No changes made"),

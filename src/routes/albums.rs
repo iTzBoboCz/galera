@@ -3,7 +3,7 @@ use crate::auth::mixed_auth::MixedAuth;
 use crate::auth::shared_album_link::hash_password;
 use crate::auth::token::Claims;
 use crate::models::{Album, AlbumShareLink, NewAlbumMedia, NewAlbumShareLink};
-use crate::openapi::tags::AUTH_PROTECTED;
+use crate::openapi::tags::{ALBUMS, AUTH_MIXED, AUTH_PROTECTED};
 use crate::routes::media::MediaResponse;
 use axum::Extension;
 use axum::extract::State;
@@ -58,12 +58,13 @@ pub struct AlbumRoute;
 #[utoipa::path(
   post,
   path = "/album",
-  tags = ["album", AUTH_PROTECTED],
   security(("BearerAuth" = [])),
+  tags = [ALBUMS, AUTH_PROTECTED],
   request_body = AlbumInsertData,
   responses(
     (status = 200, description = "Album created (or null on failure)", body = Option<AlbumResponse>),
     (status = 401, description = "Unauthorized"),
+    (status = 500, description = "Internal server error")
   )
 )]
 pub async fn create_album(
@@ -102,6 +103,8 @@ pub struct AlbumMediaRoute;
 #[utoipa::path(
   post,
   path = "/album/media",
+  security(("BearerAuth" = [])),
+  tags = [ALBUMS, AUTH_PROTECTED],
   request_body = Vec<AlbumAddMedia>,
   responses(
     (status = 200, description = "Media added to album"),
@@ -159,6 +162,8 @@ pub async fn album_add_media(
 #[utoipa::path(
   get,
   path = "/album",
+  security(("BearerAuth" = [])),
+  tags = [ALBUMS, AUTH_PROTECTED],
   responses(
     (status = 200, description = "Album list", body = Vec<AlbumResponse>),
     (status = 401, description = "Unauthorized")
@@ -189,6 +194,14 @@ pub struct AlbumUuidMediaRoute {
 #[utoipa::path(
   get,
   path = "/album/{album_uuid}/media",
+  params(
+    ("album_uuid" = String, Path, description = "Album UUID")
+  ),
+  security(
+    ("BearerAuth" = []),
+    ("BasicSharedAlbumLinkAuth" = [])
+  ),
+  tags = [ALBUMS, AUTH_MIXED],
   responses(
     (status = 200, description = "Album media", body = Vec<MediaResponse>),
     (status = 401, description = "Unauthorized"),
@@ -223,6 +236,7 @@ pub async fn get_album_structure(
 
       // TODO: check if non-owner user has permission to access the album (preparation for shared albums)
   } else if let Some(_special) = auth.shared_album_link.as_deref() {
+      // check if the shared album link has access to the album
     // TODO: maybe check more things
   } else {
     return Err(StatusCode::UNAUTHORIZED);
@@ -256,7 +270,12 @@ pub struct AlbumUpdateData {
 #[utoipa::path(
   put,
   path = "/album/{album_uuid}",
+  params(
+    ("album_uuid" = String, Path, description = "Album UUID")
+  ),
   request_body = AlbumUpdateData,
+  security(("BearerAuth" = [])),
+  tags = [ALBUMS, AUTH_PROTECTED],
   responses(
     (status = 200, description = "Album updated"),
     (status = 204, description = "No changes"),
@@ -306,6 +325,11 @@ pub async fn update_album(
 #[utoipa::path(
   delete,
   path = "/album/{album_uuid}",
+  params(
+    ("album_uuid" = String, Path, description = "Album UUID")
+  ),
+  security(("BearerAuth" = [])),
+  tags = [ALBUMS, AUTH_PROTECTED],
   responses(
     (status = 200, description = "Album deleted"),
     (status = 401, description = "Unauthorized"),
@@ -384,7 +408,12 @@ pub struct AlbumUuidShareLinkRoute {
 #[utoipa::path(
   post,
   path = "/album/{album_uuid}/share/link",
+  params(
+    ("album_uuid" = String, Path, description = "Album UUID")
+  ),
   request_body = AlbumShareLinkInsert,
+  security(("BearerAuth" = [])),
+  tags = [ALBUMS, AUTH_PROTECTED],
   responses(
     (status = 200, description = "Share link created", body = SharedAlbumLinkResponse),
     (status = 401, description = "Unauthorized"),
@@ -447,6 +476,11 @@ impl From<&AlbumShareLink> for SharedAlbumLinkResponse {
 #[utoipa::path(
   get,
   path = "/album/{album_uuid}/share/link",
+  params(
+    ("album_uuid" = String, Path, description = "Album UUID")
+  ),
+  security(("BearerAuth" = [])),
+  tags = [ALBUMS, AUTH_PROTECTED],
   responses(
     (status = 200, description = "Album share links", body = Vec<SharedAlbumLinkResponse>),
     (status = 401, description = "Unauthorized"),
@@ -510,6 +544,11 @@ pub struct AlbumShareLinkUuidRoute {
 #[utoipa::path(
   get,
   path = "/album/share/link/{album_share_link_uuid}",
+  params(
+    ("album_share_link_uuid" = String, Path, description = "Album Share Link UUID")
+  ),
+  security(("BearerAuth" = [])),
+  tags = [ALBUMS, AUTH_PROTECTED],
   responses(
     (status = 200, description = "Share link info", body = AlbumShareLinkBasic),
     (status = 404, description = "Not found"),
@@ -543,6 +582,11 @@ pub async fn get_album_share_link(
   put,
   path = "/album/share/link/{album_share_link_uuid}",
   request_body = AlbumShareLinkInsert,
+  params(
+    ("album_share_link_uuid" = String, Path, description = "Album Share Link UUID")
+  ),
+  security(("BearerAuth" = [])),
+  tags = [ALBUMS, AUTH_PROTECTED],
   responses(
     (status = 200, description = "Album share link updated"),
     (status = 204, description = "No changes"),
@@ -587,6 +631,11 @@ pub async fn update_album_share_link(
 #[utoipa::path(
   delete,
   path = "/album/share/link/{album_share_link_uuid}",
+  params(
+    ("album_share_link_uuid" = String, Path, description = "Album Share Link UUID")
+  ),
+  security(("BearerAuth" = [])),
+  tags = [ALBUMS, AUTH_PROTECTED],
   responses(
     (status = 200, description = "Album share link deleted"),
     (status = 204, description = "Nothing deleted"),

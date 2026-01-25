@@ -4,6 +4,7 @@ use crate::auth::token::{Claims, ClaimsEncoded};
 use crate::db::{self, users::get_user_by_id};
 use crate::directories::Directories;
 use crate::models::NewUser;
+use crate::openapi::tags::{AUTH, AUTH_PROTECTED, AUTH_PUBLIC, OTHER};
 use axum::Extension;
 use axum::extract::State;
 use axum::{Json, http::StatusCode};
@@ -24,6 +25,7 @@ pub struct Health;
 #[utoipa::path(
   get,
   path = "/health",
+  tags = [ OTHER, AUTH_PUBLIC ],
   responses(
     (status = 200, description = "Health check passed")
   )
@@ -40,6 +42,7 @@ pub struct UserRoute;
 #[utoipa::path(
   post,
   path = "/user",
+  tags = [ AUTH, AUTH_PROTECTED ],
   request_body = NewUser,
   responses(
     (status = 200, description = "User created"),
@@ -75,7 +78,7 @@ pub struct LoginRoute;
 #[utoipa::path(
   post,
   path = "/login",
-  tags = ["auth:public"],
+  tags = [ AUTH, AUTH_PUBLIC ],
   request_body = UserLogin,
   responses(
     (status = 200, description = "Login successful", body = LoginResponse),
@@ -126,6 +129,7 @@ pub struct LoginRefreshRoute;
 #[utoipa::path(
   post,
   path = "/login/refresh",
+  tags = [ AUTH, AUTH_PROTECTED ],
   request_body = ClaimsEncoded,
   responses(
     (status = 200, description = "Token refreshed", body = ClaimsEncoded),
@@ -192,6 +196,7 @@ pub struct ScanMediaRoute;
 #[utoipa::path(
   post,
   path = "/scan_media",
+  tags = [ OTHER, AUTH_PROTECTED ],
   security(("BearerAuth" = [])),
   responses(
     (status = 200, description = "Scan started"),
@@ -246,6 +251,7 @@ pub struct SystemInfoPublicRoute;
 #[utoipa::path(
   get,
   path = "/system/info/public",
+  tags = [ OTHER, AUTH_PUBLIC ],
   responses(
     (status = 200, description = "System info", body = SystemInfoPublic)
   )
