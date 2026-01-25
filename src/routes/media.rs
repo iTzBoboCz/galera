@@ -5,6 +5,7 @@ use crate::db;
 use crate::db::media::select_media_by_uuid;
 use crate::directories::Directories;
 use crate::models::{Folder, Media};
+use crate::openapi::AUTH_PROTECTED;
 use axum::Extension;
 use axum::body::Body;
 use axum::extract::State;
@@ -13,12 +14,13 @@ use axum::{Json, http::StatusCode};
 use axum_extra::routing::TypedPath;
 use chrono::NaiveDateTime;
 use tracing::error;
+use utoipa::ToSchema;
 use crate::{AppState, scan};
 use serde::{Deserialize, Serialize};
 use tokio_util::io::ReaderStream;
 
 // #[derive(JsonSchema)]
-#[derive(Serialize, Deserialize, Queryable)]
+#[derive(Serialize, Deserialize, Queryable, ToSchema)]
 pub struct MediaResponse {
   pub filename: String,
   pub owner_id: i32,
@@ -47,6 +49,17 @@ pub struct MediaRoute;
 
 /// Gets a list of all media
 // FIXME: skips new media in /gallery/username/<medianame>; /gallery/username/<some_folder>/<medianame> works
+#[utoipa::path(
+  get,
+  path = "/media",
+  security(("BearerAuth" = [])),
+  tags = [ "media", "auth:protected" ],
+  responses(
+    (status = 200, description = "Media tree", body = [MediaResponse]),
+    (status = 401, description = "Unauthorized"),
+    (status = 403, description = "Forbidden")
+  )
+)]
 pub async fn media_structure(
   _: MediaRoute,
   State(AppState { pool,.. }): State<AppState>,
@@ -65,7 +78,21 @@ pub struct MediaUuidRoute {
   media_uuid: String,
 }
 
-// /// Returns a media
+/// Returns a media
+#[utoipa::path(
+  get,
+  path = "/media/{media_uuid}",
+  tags = ["media", AUTH_PROTECTED],
+  security(
+    ("BearerAuth" = []),
+  ),
+  responses(
+    (status = 200, description = "Binary media stream", content_type = "application/octet-stream", body = Vec<u8>),
+    (status = 401, description = "Unauthorized"),
+    (status = 404, description = "Media not found"),
+    (status = 500, description = "Internal server error")
+  )
+)]
 pub async fn get_media_by_uuid(
   MediaUuidRoute { media_uuid }: MediaUuidRoute,
   State(AppState { pool,.. }): State<AppState>,

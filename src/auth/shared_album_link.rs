@@ -52,39 +52,3 @@ pub async fn shared_album_link(State(AppState { pool,.. }): State<AppState>, Typ
   req.extensions_mut().insert(Arc::new(album_share_link_security));
   return Ok(next.run(req).await)
 }
-
-// impl<'a, 'r> OpenApiFromRequest<'a> for SharedAlbumLinkSecurity {
-//   fn from_request_input(
-//     _gen: &mut OpenApiGenerator,
-//     _name: String,
-//     _required: bool,
-//   ) -> rocket_okapi::Result<RequestHeaderInput> {
-//     let mut security_req = SecurityRequirement::new();
-//     // each security requirement needs a specific key in the openapi docs
-//     security_req.insert("BasicSharedAlbumLinkAuth".into(), Vec::new());
-
-//     // The scheme for the security needs to be defined as well
-//     // https://swagger.io/docs/specification/authentication/basic-authentication/
-//     let security_scheme = SecurityScheme {
-//       description: Some("requires a base64 encoded string in format `album_share_link_uuid:password` to access".into()),
-//       // this will show where and under which name the value will be found in the HTTP header
-//       // in this case, the header key x-api-key will be searched
-//       // other alternatives are "query", "cookie" according to the openapi specs.
-//       // [link](https://swagger.io/specification/#security-scheme-object)
-//       // which also is where you can find examples of how to create a JWT scheme for example
-//       data: SecuritySchemeData::Http {
-//         scheme: String::from("basic"),
-//         bearer_format: None,
-//       },
-//       extensions: Object::default(),
-//     };
-
-//     Ok(RequestHeaderInput::Security(
-//       // scheme identifier is the keyvalue under which this security_scheme will be filed in
-//       // the openapi.json file
-//       "BasicSharedAlbumLinkAuth".to_owned(),
-//       security_scheme,
-//       security_req,
-//     ))
-//   }
-// }

@@ -8,7 +8,7 @@ use axum::Extension;
 use axum::extract::State;
 use axum::{Json, http::StatusCode};
 use axum_extra::routing::TypedPath;
-use tracing::info;
+use tracing::{error, info};
 use crate::{AppState, ConnectionPool, scan};
 use serde::{Deserialize, Serialize};
 
@@ -58,6 +58,17 @@ pub async fn create_user(
 pub struct LoginRoute;
 
 /// You must provide either a username or an email together with a password.
+#[utoipa::path(
+  post,
+  path = "/login",
+  tags = ["auth:public"],
+  request_body = UserLogin,
+  responses(
+    (status = 200, description = "Login successful", body = LoginResponse),
+    (status = 409, description = "Invalid credentials or user conflict"),
+    (status = 400, description = "Malformed request")
+  )
+)]
 pub async fn login(
   _: LoginRoute,
   State(AppState { pool,.. }): State<AppState>,

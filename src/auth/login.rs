@@ -1,11 +1,13 @@
 use crate::{db::users::{check_user_login_email, check_user_login_username}, models::User, ConnectionPool};
 use serde::{Serialize, Deserialize};
 use sha2::Digest;
+use tracing::error;
+use utoipa::ToSchema;
 use super::token::{Claims, ClaimsEncoded};
 
 /// Used for receiving login data.
 // #[derive(JsonSchema)]
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct UserLogin {
   username_or_email: String,
   // #[validate(length(min = 8, max = 128))]
@@ -53,7 +55,7 @@ impl UserLogin {
 
 /// Used for sending information about user.
 // #[derive(JsonSchema)]
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct UserInfo {
   username: String,
   email: String
@@ -79,7 +81,7 @@ impl From<User> for UserInfo {
 
 /// Response when logging in.
 // #[derive(JsonSchema)]
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct LoginResponse {
   user_info: UserInfo,
   bearer_token: String,

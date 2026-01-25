@@ -2,6 +2,7 @@ use std::sync::Arc;
 use crate::auth::shared_album_link::{SharedAlbumLinkSecurity, hash_password};
 use crate::auth::token::Claims;
 use crate::models::{Album, AlbumShareLink, NewAlbumMedia, NewAlbumShareLink};
+use crate::openapi::AUTH_PROTECTED;
 use crate::routes::media::MediaResponse;
 use axum::Extension;
 use axum::body::Body;
@@ -10,19 +11,20 @@ use axum::http::Request;
 use axum::{Json, http::StatusCode};
 use axum_extra::routing::TypedPath;
 use tracing::error;
+use utoipa::ToSchema;
 use crate::{AppState, db};
 use chrono::{NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 // #[derive(JsonSchema)]
-#[derive(Serialize, Deserialize, Queryable)]
+#[derive(Serialize, Deserialize, Queryable, ToSchema)]
 pub struct AlbumInsertData {
   pub name: String,
   pub description: Option<String>,
 }
 
 // #[derive(JsonSchema)]
-#[derive(Serialize, Deserialize, Queryable)]
+#[derive(Serialize, Deserialize, Queryable, ToSchema)]
 pub struct AlbumResponse {
   pub owner_id: i32,
   pub name: String,
@@ -56,6 +58,18 @@ pub struct AlbumRoute;
 
 /// Creates a new album
 // TODO: change response later
+#[utoipa::path(
+  post,
+  path = "/album",
+  tags = ["album", AUTH_PROTECTED],
+  security(("BearerAuth" = [])),
+  request_body = AlbumInsertData,
+  responses(
+    (status = 200, description = "Album created (or null on failure)", body = Option<AlbumResponse>),
+    (status = 401, description = "Unauthorized"),
+    (status = 403, description = "Forbidden")
+  )
+)]
 pub async fn create_album(
   _: AlbumRoute,
   State(AppState { pool,.. }): State<AppState>,
