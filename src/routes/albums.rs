@@ -2,7 +2,7 @@ use std::sync::Arc;
 use crate::auth::shared_album_link::{SharedAlbumLinkSecurity, hash_password};
 use crate::auth::token::Claims;
 use crate::models::{Album, AlbumShareLink, NewAlbumMedia, NewAlbumShareLink};
-use crate::openapi::AUTH_PROTECTED;
+use crate::openapi::tags::AUTH_PROTECTED;
 use crate::routes::media::MediaResponse;
 use axum::Extension;
 use axum::body::Body;

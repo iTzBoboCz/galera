@@ -1,15 +1,25 @@
 use utoipa::OpenApi;
 
-pub const AUTH_PUBLIC: &str = "auth:public";
-pub const AUTH_PROTECTED: &str = "auth:protected";
-pub const AUTH_MIXED: &str = "auth:mixed";
+pub mod tags {
+  // Authentication tags
+  pub const AUTH_PUBLIC: &str = "auth:public";
+  pub const AUTH_PROTECTED: &str = "auth:protected";
+  pub const AUTH_MIXED: &str = "auth:mixed";
+
+  // Route domain tags
+  pub const ALBUMS: &str = "albums";
+  pub const AUTH: &str = "auth";
+  pub const MEDIA: &str = "media";
+  pub const OIDC: &str = "oidc";
+  pub const OTHER: &str = "other";
+}
 
 #[derive(OpenApi)]
 #[openapi(
   tags(
-    (name = AUTH_PUBLIC, description = "Public endpoints without authentication"),
-    (name = AUTH_PROTECTED, description = "Protected endpoints using `BearerAuth`"),
-    (name = AUTH_MIXED, description = "Protected endpoints using `BearerAuth` or `BasicSharedAlbumLinkAuth`"),
+    (name = tags::AUTH_PUBLIC, description = "Public endpoints without authentication"),
+    (name = tags::AUTH_PROTECTED, description = "Protected endpoints using `BearerAuth`"),
+    (name = tags::AUTH_MIXED, description = "Protected endpoints using `BearerAuth` or `BasicSharedAlbumLinkAuth`"),
   ),
   paths(
     crate::routes::media::media_structure,

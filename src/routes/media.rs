@@ -5,7 +5,7 @@ use crate::db;
 use crate::db::media::select_media_by_uuid;
 use crate::directories::Directories;
 use crate::models::{Folder, Media};
-use crate::openapi::AUTH_PROTECTED;
+use crate::openapi::tags::AUTH_PROTECTED;
 use axum::Extension;
 use axum::body::Body;
 use axum::extract::State;
