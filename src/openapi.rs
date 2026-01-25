@@ -1,4 +1,4 @@
-use utoipa::OpenApi;
+use utoipa::{OpenApi, openapi::PathItem};
 
 pub mod tags {
   // Authentication tags
@@ -50,7 +50,7 @@ pub mod tags {
     crate::routes::albums::get_album_share_link,
     crate::routes::albums::get_album_structure
   ),
-  modifiers(&BearerSecurityAddon)
+  modifiers(&BearerSecurityAddon, &OperationIdPrefix)
 )]
 pub struct ApiDoc;
 
@@ -82,5 +82,38 @@ impl utoipa::Modify for BearerSecurityAddon {
           .build(),
       ),
     );
+  }
+}
+
+pub struct OperationIdPrefix;
+
+impl utoipa::Modify for OperationIdPrefix {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        for (_path, item) in openapi.paths.paths.iter_mut() {
+            add_prefix(item, "routes_");
+        }
+    }
+}
+
+fn add_prefix(item: &mut PathItem, prefix: &str) {
+  let ops = [
+    &mut item.get,
+    &mut item.post,
+    &mut item.put,
+    &mut item.delete,
+    &mut item.patch,
+    &mut item.options,
+    &mut item.head,
+    &mut item.trace,
+  ];
+
+  for op in ops {
+    if let Some(op) = op {
+      if let Some(id) = &op.operation_id {
+        if !id.starts_with(prefix) {
+          op.operation_id = Some(format!("{prefix}{id}"));
+        }
+      }
+    }
   }
 }
