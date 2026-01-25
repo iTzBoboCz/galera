@@ -1,5 +1,6 @@
 use std::time::Instant;
 use crate::auth::token::Claims;
+use crate::auth::login::LoginResponse;
 use crate::db::oidc::insert_oidc_user;
 use crate::routes::issue_login_response;
 use axum::extract::{Query, State};
@@ -10,6 +11,7 @@ use openidconnect::core::CoreAuthenticationFlow;
 use openidconnect::{AuthorizationCode, CsrfToken, Nonce, Scope, TokenResponse};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, warn};
+use utoipa::ToSchema;
 use crate::{AppState, db};
 
 #[derive(TypedPath, Deserialize)]
@@ -18,6 +20,14 @@ pub struct OidcLogin {
   pub provider: String,
 }
 
+#[utoipa::path(
+  get,
+  path = "/auth/oidc/{provider}/login",
+  responses(
+    (status = 302, description = "Redirect to OIDC provider"),
+    (status = 404, description = "OIDC provider not found")
+  )
+)]
 pub async fn oidc_login(
   OidcLogin { provider }: OidcLogin,
   State(state): State<AppState>,
@@ -71,6 +81,22 @@ pub struct OidcCallbackQuery {
   state: String
 }
 
+#[utoipa::path(
+  get,
+  path = "/auth/oidc/{provider}/callback",
+  params(
+    ("provider" = String, Path, description = "OIDC provider key"),
+    ("code" = String, Query, description = "Authorization code"),
+    ("state" = String, Query, description = "CSRF state")
+  ),
+  responses(
+    (status = 200, description = "Login successful", body = LoginResponse),
+    (status = 400, description = "Bad request"),
+    (status = 401, description = "Authentication failed"),
+    (status = 404, description = "Provider not found"),
+    (status = 500, description = "Internal server error")
+  )
+)]
 pub async fn oidc_callback(
   OidcCallback { provider }: OidcCallback,
   Query(q): Query<OidcCallbackQuery>,
@@ -171,17 +197,17 @@ pub async fn oidc_callback(
   issue_login_response(state.pool, Claims::new(user_id)).await.into_response()
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, ToSchema)]
 pub struct ServerConfigResponse {
   auth: AuthConfig,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, ToSchema)]
 pub struct AuthConfig {
     pub oidc: Vec<OidcProviderPublic>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, ToSchema)]
 pub struct OidcProviderPublic {
     pub key: String,
     pub display_name: String,
@@ -193,6 +219,13 @@ pub struct OidcProviderPublic {
 pub struct ServerConfig;
 
 /// Returns server configuration
+#[utoipa::path(
+  get,
+  path = "/public/config",
+  responses(
+    (status = 200, description = "Server config", body = ServerConfigResponse)
+  )
+)]
 pub async fn get_server_config(
   _: ServerConfig,
   State(AppState { oidc_providers,..}): State<AppState>,

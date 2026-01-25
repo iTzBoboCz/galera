@@ -4,6 +4,7 @@ use serde::{Serialize, Deserialize};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, TokenData, Validation};
 use tracing::error;
 use uuid::Uuid;
+use utoipa::ToSchema;
 use crate::{AppState, ConnectionPool, db::{self, tokens::{insert_access_token, insert_refresh_token, insert_session_tokens, select_refresh_token_expiration}, users}};
 use crate::DbConn;
 use crate::auth::secret::Secret;
@@ -22,7 +23,6 @@ use axum_extra::{TypedHeader, headers::{Authorization, authorization}};
 /// }
 /// ```
 /// for more information, see [Rocket documentation](https://rocket.rs/v0.5-rc/guide/requests/#request-guards).
-// #[derive(JsonSchema)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
   /// expiration time
@@ -45,8 +45,7 @@ pub struct Claims {
 ///
 /// let decoded_token = encoded_token.decode();
 /// ```
-// #[derive(JsonSchema)]
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, ToSchema)]
 pub struct ClaimsEncoded {
   encoded_claims: String,
 }

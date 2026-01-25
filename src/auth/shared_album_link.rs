@@ -5,7 +5,6 @@ use sha2::Digest;
 use crate::{AppState, db::albums::{select_album, select_album_share_link_by_uuid}};
 use std::{str, sync::Arc};
 
-// #[derive(JsonSchema)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SharedAlbumLinkSecurity {
   album_share_link_uuid: String,

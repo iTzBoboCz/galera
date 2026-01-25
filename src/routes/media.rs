@@ -19,7 +19,6 @@ use crate::{AppState, scan};
 use serde::{Deserialize, Serialize};
 use tokio_util::io::ReaderStream;
 
-// #[derive(JsonSchema)]
 #[derive(Serialize, Deserialize, Queryable, ToSchema)]
 pub struct MediaResponse {
   pub filename: String,
@@ -55,9 +54,9 @@ pub struct MediaRoute;
   security(("BearerAuth" = [])),
   tags = [ "media", "auth:protected" ],
   responses(
-    (status = 200, description = "Media tree", body = [MediaResponse]),
+    (status = 200, description = "List of media", body = Vec<MediaResponse>),
     (status = 401, description = "Unauthorized"),
-    (status = 403, description = "Forbidden")
+    (status = 500, description = "Internal server error")
   )
 )]
 pub async fn media_structure(
@@ -65,8 +64,6 @@ pub async fn media_structure(
   State(AppState { pool,.. }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>
 ) -> Result<Json<Vec<MediaResponse>>, StatusCode> {
-  error!("user_id: {}", claims.user_id);
-
   let structure = db::media::get_media_structure(pool.get().await.unwrap(), claims.user_id).await;
 
   Ok(Json(structure))
@@ -156,8 +153,7 @@ pub async fn get_media_by_uuid(
   Ok(Body::from_stream(stream))
 }
 
-// #[derive(JsonSchema)]
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, ToSchema)]
 pub struct MediaDescription {
   description: Option<String>
 }
@@ -169,6 +165,19 @@ pub struct MediaUuidDescriptionRoute {
 }
 
 /// Updates description of a media
+#[utoipa::path(
+  put,
+  path = "/media/{media_uuid}/description",
+  security(("BearerAuth" = [])),
+  request_body = MediaDescription,
+  responses(
+    (status = 200, description = "Description updated"),
+    (status = 401, description = "Unauthorized"),
+    (status = 403, description = "Forbidden"),
+    (status = 404, description = "Media not found"),
+    (status = 500, description = "Internal server error")
+  )
+)]
 pub async fn media_update_description(
   MediaUuidDescriptionRoute { media_uuid }: MediaUuidDescriptionRoute,
   State(AppState { pool,.. }): State<AppState>,
@@ -199,6 +208,18 @@ pub async fn media_update_description(
 }
 
 /// Deletes description of a media
+#[utoipa::path(
+  delete,
+  path = "/media/{media_uuid}/description",
+  security(("BearerAuth" = [])),
+  responses(
+    (status = 200, description = "Description deleted"),
+    (status = 401, description = "Unauthorized"),
+    (status = 403, description = "Forbidden"),
+    (status = 404, description = "Media not found"),
+    (status = 500, description = "Internal server error")
+  )
+)]
 pub async fn media_delete_description(
   MediaUuidDescriptionRoute { media_uuid }: MediaUuidDescriptionRoute,
   State(AppState { pool,.. }): State<AppState>,
@@ -225,6 +246,16 @@ pub async fn media_delete_description(
 pub struct MediaLikedRoute;
 
 /// Returns a list of liked media.
+#[utoipa::path(
+  get,
+  path = "/media/liked",
+  security(("BearerAuth" = [])),
+  responses(
+    (status = 200, description = "Liked media", body = Vec<MediaResponse>),
+    (status = 401, description = "Unauthorized"),
+    (status = 500, description = "Internal server error")
+  )
+)]
 pub async fn get_media_liked_list(
   _: MediaLikedRoute,
   State(AppState { pool,.. }): State<AppState>,
@@ -248,6 +279,17 @@ pub struct MediaUuidLikeRoute {
 }
 
 /// Likes the media.
+#[utoipa::path(
+  post,
+  path = "/media/{media_uuid}/like",
+  security(("BearerAuth" = [])),
+  responses(
+    (status = 200, description = "Liked a media"),
+    (status = 401, description = "Unauthorized"),
+    (status = 404, description = "Media not found"),
+    (status = 409, description = "Already liked")
+  )
+)]
 pub async fn media_like(
   MediaUuidLikeRoute { media_uuid }: MediaUuidLikeRoute,
   State(AppState { pool,.. }): State<AppState>,
@@ -269,6 +311,18 @@ pub async fn media_like(
 }
 
 /// Unlikes the media.
+#[utoipa::path(
+  delete,
+  path = "/media/{media_uuid}/like",
+  security(("BearerAuth" = [])),
+  responses(
+    (status = 200, description = "Unliked a media"),
+    (status = 204, description = "No changes made"),
+    (status = 404, description = "Media not found"),
+    (status = 404, description = "Media not found"),
+    (status = 500, description = "Internal server error")
+  )
+)]
 pub async fn media_unlike(
   MediaUuidLikeRoute { media_uuid }: MediaUuidLikeRoute,
   State(AppState { pool,.. }): State<AppState>,
