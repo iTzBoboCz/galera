@@ -1,13 +1,12 @@
 use std::sync::Arc;
-use crate::auth::shared_album_link::{SharedAlbumLinkSecurity, hash_password};
+use crate::auth::mixed_auth::MixedAuth;
+use crate::auth::shared_album_link::hash_password;
 use crate::auth::token::Claims;
 use crate::models::{Album, AlbumShareLink, NewAlbumMedia, NewAlbumShareLink};
 use crate::openapi::tags::AUTH_PROTECTED;
 use crate::routes::media::MediaResponse;
 use axum::Extension;
-use axum::body::Body;
 use axum::extract::State;
-use axum::http::Request;
 use axum::{Json, http::StatusCode};
 use axum_extra::routing::TypedPath;
 use tracing::error;
@@ -200,7 +199,7 @@ pub struct AlbumUuidMediaRoute {
 pub async fn get_album_structure(
   AlbumUuidMediaRoute { album_uuid }: AlbumUuidMediaRoute,
   State(AppState { pool,.. }): State<AppState>,
-  request: Request<Body>
+  Extension(auth): Extension<Arc<MixedAuth>>,
 ) -> Result<Json<Vec<MediaResponse>>, StatusCode> {
   let Some(album_id) = db::albums::select_album_id(pool.get().await.unwrap(), album_uuid).await else {
     return Err(StatusCode::NOT_FOUND);
@@ -210,7 +209,7 @@ pub async fn get_album_structure(
     return Err(StatusCode::NOT_FOUND);
   };
 
-  if let Some(claims) = request.extensions().get::<Arc<Claims>>() {
+  if let Some(claims) = auth.claims.as_deref() {
       if album.owner_id != claims.user_id {
         return Err(StatusCode::UNAUTHORIZED);
       }
@@ -223,7 +222,7 @@ pub async fn get_album_structure(
       // }
 
       // TODO: check if non-owner user has permission to access the album (preparation for shared albums)
-  } else if let Some(_special) = request.extensions().get::<Arc<SharedAlbumLinkSecurity>>() {
+  } else if let Some(_special) = auth.shared_album_link.as_deref() {
     // TODO: maybe check more things
   } else {
     return Err(StatusCode::UNAUTHORIZED);

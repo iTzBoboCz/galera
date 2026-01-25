@@ -47,7 +47,7 @@ pub struct Claims {
 /// ```
 #[derive(Serialize, Deserialize, Clone, ToSchema)]
 pub struct ClaimsEncoded {
-  encoded_claims: String,
+  pub encoded_claims: String,
 }
 
 impl ClaimsEncoded {
@@ -277,20 +277,4 @@ pub async fn auth(State(AppState { pool,.. }): State<AppState>, TypedHeader(Auth
   // TODO: check refresh token validity and if access token still exists (one device => people cant steal it well)
 
   Err(error_status)
-}
-
-use super::shared_album_link::shared_album_link;
-
-pub async fn mixed_auth(State(state): State<AppState>, bearer: Option<TypedHeader<Authorization<authorization::Bearer>>>, special_auth: Option<TypedHeader<Authorization<authorization::Basic>>>, req: Request<Body>, next: Next) -> Result<Response, StatusCode> {
-  if let Some(bearer) = bearer {
-    if let Ok(result) = auth(State(state), bearer, req, next).await {
-      return Ok(result);
-    }
-  } else if let Some(special_auth) = special_auth {
-    if let Ok(result) = shared_album_link(State(state), special_auth, req, next).await {
-      return Ok(result);
-    }
-  }
-
-  Err(StatusCode::UNAUTHORIZED)
 }

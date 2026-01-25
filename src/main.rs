@@ -192,7 +192,7 @@ async fn main() {
 
   let mixed_auth = Router::new()
     .typed_get(routes::albums::get_album_structure)
-    .route_layer(middleware::from_fn_with_state(state.clone(), auth::token::mixed_auth));
+    .route_layer(middleware::from_fn_with_state(state.clone(), auth::mixed_auth::mixed_auth));
 
   // build our application with a route
   let app = protected
