@@ -1,4 +1,4 @@
-use utoipa::{OpenApi, openapi::PathItem};
+use utoipa::{Modify, OpenApi, openapi::PathItem};
 
 pub mod tags {
   // Authentication tags
@@ -54,9 +54,21 @@ pub mod tags {
 )]
 pub struct ApiDoc;
 
+impl ApiDoc {
+  pub fn generate_openapi() -> utoipa::openapi::OpenApi {
+    Self::openapi()
+  }
+
+  pub fn generate_openapi_tagless() -> utoipa::openapi::OpenApi {
+    let mut doc = ApiDoc::openapi();
+    StripTags.modify(&mut doc);
+    doc
+  }
+}
+
 struct BearerSecurityAddon;
 
-impl utoipa::Modify for BearerSecurityAddon {
+impl Modify for BearerSecurityAddon {
   fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
     use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme};
 
@@ -87,12 +99,12 @@ impl utoipa::Modify for BearerSecurityAddon {
 
 pub struct OperationIdPrefix;
 
-impl utoipa::Modify for OperationIdPrefix {
-    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
-        for (_path, item) in openapi.paths.paths.iter_mut() {
-            add_prefix(item, "routes_");
-        }
+impl Modify for OperationIdPrefix {
+  fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+    for (_path, item) in openapi.paths.paths.iter_mut() {
+      add_prefix(item, "routes_");
     }
+  }
 }
 
 fn add_prefix(item: &mut PathItem, prefix: &str) {
@@ -115,5 +127,29 @@ fn add_prefix(item: &mut PathItem, prefix: &str) {
         }
       }
     }
+  }
+}
+
+pub struct StripTags;
+
+impl Modify for StripTags {
+  fn modify(&self, doc: &mut utoipa::openapi::OpenApi) {
+    for (_, path_item) in doc.paths.paths.iter_mut() {
+      for op in [
+        &mut path_item.get,
+        &mut path_item.post,
+        &mut path_item.put,
+        &mut path_item.delete,
+        &mut path_item.patch,
+        &mut path_item.options,
+        &mut path_item.head,
+        &mut path_item.trace,
+      ] {
+        if let Some(op) = op {
+          op.tags = None;
+        }
+      }
+    }
+    doc.tags = None;
   }
 }

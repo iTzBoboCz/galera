@@ -16,8 +16,8 @@ extern crate diesel;
 use axum_extra::routing::RouterExt;
 use dashmap::DashMap;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
+use openapi::ApiDoc;
 use tracing::{error, info, warn};
-use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 use crate::auth::secret::Secret;
 use crate::directories::Directories;
@@ -198,7 +198,10 @@ async fn main() {
   let app = protected
     .merge(unprotected)
     .merge(mixed_auth)
-    .merge(SwaggerUi::new("/swagger-ui").url("/openapi.json", openapi::ApiDoc::openapi()))
+    .merge(SwaggerUi::new("/swagger-ui")
+      .url("/openapi.json", ApiDoc::generate_openapi())
+      .url("/openapi-tagless.json", ApiDoc::generate_openapi_tagless())
+    )
     .route_layer(middleware::from_fn(track_metrics))
     .layer(TraceLayer::new_for_http())
     .with_state(state);
