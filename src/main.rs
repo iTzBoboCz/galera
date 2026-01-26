@@ -16,7 +16,9 @@ extern crate diesel;
 use axum_extra::routing::RouterExt;
 use dashmap::DashMap;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
+use openapi::ApiDoc;
 use tracing::{error, info, warn};
+use utoipa_swagger_ui::SwaggerUi;
 use crate::auth::secret::Secret;
 use crate::directories::Directories;
 use axum::{response::{Html, IntoResponse}, routing::get, Router, http::Request, middleware::{Next, self}, extract::{MatchedPath}, body::Body};
@@ -39,6 +41,7 @@ mod schema;
 mod auth;
 mod directories;
 mod oidc;
+mod openapi;
 
 pub type ConnectionPool = Pool<Manager<MysqlConnection>>;
 pub type DbConn = deadpool::managed::Object<Manager<MysqlConnection>>;
@@ -189,12 +192,16 @@ async fn main() {
 
   let mixed_auth = Router::new()
     .typed_get(routes::albums::get_album_structure)
-    .route_layer(middleware::from_fn_with_state(state.clone(), auth::token::mixed_auth));
+    .route_layer(middleware::from_fn_with_state(state.clone(), auth::mixed_auth::mixed_auth));
 
   // build our application with a route
   let app = protected
     .merge(unprotected)
     .merge(mixed_auth)
+    .merge(SwaggerUi::new("/swagger-ui")
+      .url("/openapi.json", ApiDoc::generate_openapi())
+      .url("/openapi-tagless.json", ApiDoc::generate_openapi_tagless())
+    )
     .route_layer(middleware::from_fn(track_metrics))
     .layer(TraceLayer::new_for_http())
     .with_state(state);
@@ -250,66 +257,6 @@ async fn track_metrics(req: Request<Body>, next: Next) -> impl IntoResponse {
 
     response
 }
-
-// /// Connection to the database.
-// #[database("galera")]
-// pub struct DbConn(diesel::MysqlConnection);
-
-// #[launch]
-// fn rocket() -> _ {
-//   env_logger::init();
-
-//   dotenv::dotenv().ok();
-
-//   let dir = Directories::new();
-//   if dir.is_none() { panic!("Directories check failed."); }
-
-//   let secret_check = check_secret_startup();
-//   if secret_check.is_err() {
-//     panic!("Secret couldn't be read and/or created: {}", secret_check.unwrap_err());
-//   }
-
-//   rocket::build()
-//     .attach(DbConn::fairing())
-//     .attach(AdHoc::on_ignite("Database migration", run_migrations))
-//     // routes_with_openapi![...] will host the openapi document at openapi.json
-//     .mount(
-//       "/",
-//       openapi_get_routes![
-//         routes::index,
-//         routes::media_structure,
-//         routes::scan_media,
-//         routes::get_media_by_uuid,
-//         routes::create_user,
-//         routes::get_album_list,
-//         routes::create_album,
-//         routes::update_album,
-//         routes::delete_album,
-//         routes::album_add_media,
-//         routes::login,
-//         routes::refresh_token,
-//         routes::get_media_liked_list,
-//         routes::get_album_structure,
-//         routes::media_like,
-//         routes::media_unlike,
-//         routes::system_info_public,
-//         routes::media_update_description,
-//         routes::media_delete_description,
-//         routes::create_album_share_link,
-//         routes::get_album_share_links,
-//         routes::get_album_share_link,
-//         routes::update_album_share_link,
-//         routes::delete_album_share_link
-//       ],
-//     )
-//     .mount(
-//       "/swagger-ui/",
-//       make_swagger_ui(&SwaggerUIConfig {
-//         url: "../openapi.json".to_owned(),
-//         ..Default::default()
-//       }),
-//     )
-// }
 
 /// Checks whether the secret.key file is present and tries to create it if it isn't.\
 /// This is meant to be run before starting Rocket.

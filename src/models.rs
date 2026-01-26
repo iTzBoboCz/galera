@@ -7,6 +7,7 @@ use nanoid::nanoid;
 // use rocket::form::FromForm;
 use serde::{Serialize, Deserialize};
 use sha2::Digest;
+use utoipa::ToSchema;
 
 #[allow(non_camel_case_types)]
 #[derive(Identifiable, Queryable)]
@@ -20,7 +21,7 @@ pub struct User {
 
 /// Struct for inserting new users.
 // #[derive(FromForm, JsonSchema)]
-#[derive(Insertable, Deserialize, Clone)]
+#[derive(Insertable, Deserialize, Clone, ToSchema)]
 #[diesel(table_name = user)]
 pub struct NewUser {
   pub username: String,
@@ -127,7 +128,6 @@ impl NewFolder {
 }
 
 #[allow(non_camel_case_types)]
-// #[derive(JsonSchema)]
 #[derive(Identifiable, Queryable, Associations, Serialize)]
 #[diesel(table_name = album)]
 #[diesel(belongs_to(User, foreign_key = owner_id))]
@@ -143,7 +143,6 @@ pub struct Album {
 }
 
 /// Struct for inserting new albums.
-// #[derive(JsonSchema)]
 #[derive(Insertable, Deserialize, Clone)]
 #[diesel(table_name = album)]
 pub struct NewAlbum {
@@ -216,7 +215,6 @@ pub struct AlbumMedia {
   pub media_id: i32
 }
 
-// #[derive(JsonSchema)]
 #[derive(Insertable, Deserialize)]
 #[diesel(table_name = album_media)]
 pub struct NewAlbumMedia {

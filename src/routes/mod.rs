@@ -4,11 +4,13 @@ use crate::auth::token::{Claims, ClaimsEncoded};
 use crate::db::{self, users::get_user_by_id};
 use crate::directories::Directories;
 use crate::models::NewUser;
+use crate::openapi::tags::{AUTH, AUTH_PROTECTED, AUTH_PUBLIC, OTHER};
 use axum::Extension;
 use axum::extract::State;
 use axum::{Json, http::StatusCode};
 use axum_extra::routing::TypedPath;
-use tracing::info;
+use tracing::{info};
+use utoipa::ToSchema;
 use crate::{AppState, ConnectionPool, scan};
 use serde::{Deserialize, Serialize};
 
@@ -16,16 +18,18 @@ pub mod oidc;
 pub mod media;
 pub mod albums;
 
-// #[openapi]
-// #[get("/")]
-// pub async fn index() -> &'static str {
-//   "Hello, world!"
-// }
-
 #[derive(TypedPath)]
 #[typed_path("/health")]
 pub struct Health;
 
+#[utoipa::path(
+  get,
+  path = "/health",
+  tags = [ OTHER, AUTH_PUBLIC ],
+  responses(
+    (status = 200, description = "Health check passed")
+  )
+)]
 pub async fn health(_: Health) -> StatusCode {
   StatusCode::OK
 }
@@ -35,6 +39,19 @@ pub async fn health(_: Health) -> StatusCode {
 pub struct UserRoute;
 
 /// Creates a new user
+#[utoipa::path(
+  post,
+  path = "/user",
+  tags = [ AUTH, AUTH_PROTECTED ],
+  request_body = NewUser,
+  responses(
+    (status = 200, description = "User created"),
+    (status = 400, description = "Invalid JSON or wrong shape"),
+    (status = 409, description = "User already exists"),
+    (status = 422, description = "Invalid user data"),
+    (status = 500, description = "Internal server error")
+  )
+)]
 pub async fn create_user(
   _: UserRoute,
   State(AppState { pool,.. }): State<AppState>,
@@ -58,32 +75,45 @@ pub async fn create_user(
 pub struct LoginRoute;
 
 /// You must provide either a username or an email together with a password.
+#[utoipa::path(
+  post,
+  path = "/login",
+  tags = [ AUTH, AUTH_PUBLIC ],
+  request_body = UserLogin,
+  responses(
+    (status = 200, description = "Login successful", body = LoginResponse),
+    (status = 400, description = "Invalid JSON or wrong shape"),
+    (status = 409, description = "Invalid credentials or user conflict"),
+    (status = 500, description = "Internal server error")
+  )
+)]
 pub async fn login(
   _: LoginRoute,
   State(AppState { pool,.. }): State<AppState>,
   Json(user_login): Json<UserLogin>,
 ) -> Result<Json<LoginResponse>, StatusCode> {
-  let token_option = user_login.hash_password().login(pool.clone()).await;
-  if token_option.is_none() { return Err(StatusCode::CONFLICT); }
-
-  let token = token_option.unwrap();
+  let Some(token) = user_login.hash_password().login(pool.clone()).await else {
+    return Err(StatusCode::CONFLICT);
+  };
 
   issue_login_response(pool, token).await
 }
 
 
 async fn issue_login_response(pool: ConnectionPool, token: Claims) -> Result<Json<LoginResponse>, StatusCode> {
-  let user_info = get_user_by_id(pool.get().await.unwrap(), token.user_id).await;
-  if user_info.is_none() { return Err(StatusCode::INTERNAL_SERVER_ERROR) }
+  let Some(user_info) = get_user_by_id(pool.get().await.unwrap(), token.user_id).await else {
+    return Err(StatusCode::INTERNAL_SERVER_ERROR);
+  };
 
-  let encoded = token.encode();
-  if encoded.is_err() { return Err(StatusCode::INTERNAL_SERVER_ERROR) }
+  let Ok(encoded) = token.encode() else {
+    return Err(StatusCode::INTERNAL_SERVER_ERROR);
+  };
 
   Ok(
     Json(
       LoginResponse::new(
-        encoded.unwrap(),
-        UserInfo::from(user_info.unwrap())
+        encoded,
+        UserInfo::from(user_info)
       )
     )
   )
@@ -96,6 +126,18 @@ pub struct LoginRefreshRoute;
 /// Refreshes sent token
 // TODO: send token in header instead of body
 // https://stackoverflow.com/a/53881397
+#[utoipa::path(
+  post,
+  path = "/login/refresh",
+  tags = [ AUTH, AUTH_PROTECTED ],
+  request_body = ClaimsEncoded,
+  responses(
+    (status = 200, description = "Token refreshed", body = ClaimsEncoded),
+    (status = 400, description = "Invalid JSON or wrong shape"),
+    (status = 401, description = "Unauthorized"),
+    (status = 500, description = "Internal server error")
+  )
+)]
 pub async fn refresh_token(
   _: LoginRefreshRoute,
   State(AppState { pool,.. }): State<AppState>,
@@ -151,6 +193,17 @@ pub async fn refresh_token(
 pub struct ScanMediaRoute;
 
 /// Searches for new media
+#[utoipa::path(
+  post,
+  path = "/scan_media",
+  tags = [ OTHER, AUTH_PROTECTED ],
+  security(("BearerAuth" = [])),
+  responses(
+    (status = 200, description = "Scan started"),
+    (status = 401, description = "Unauthorized"),
+    (status = 500, description = "Internal server error")
+  )
+)]
 pub async fn scan_media(
   _: ScanMediaRoute,
   State(AppState { pool,.. }): State<AppState>,
@@ -170,8 +223,7 @@ pub async fn scan_media(
   Ok(StatusCode::OK)
 }
 
-// #[derive(JsonSchema)
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SystemInfoPublic {
   operating_system: String,
@@ -196,6 +248,14 @@ impl SystemInfoPublic {
 pub struct SystemInfoPublicRoute;
 
 /// Returns the public system information.
+#[utoipa::path(
+  get,
+  path = "/system/info/public",
+  tags = [ OTHER, AUTH_PUBLIC ],
+  responses(
+    (status = 200, description = "System info", body = SystemInfoPublic)
+  )
+)]
 pub async fn system_info_public(
   _: SystemInfoPublicRoute,
 ) -> Json<SystemInfoPublic> {

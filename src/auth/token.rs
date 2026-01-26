@@ -4,6 +4,7 @@ use serde::{Serialize, Deserialize};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, TokenData, Validation};
 use tracing::error;
 use uuid::Uuid;
+use utoipa::ToSchema;
 use crate::{AppState, ConnectionPool, db::{self, tokens::{insert_access_token, insert_refresh_token, insert_session_tokens, select_refresh_token_expiration}, users}};
 use crate::DbConn;
 use crate::auth::secret::Secret;
@@ -22,7 +23,6 @@ use axum_extra::{TypedHeader, headers::{Authorization, authorization}};
 /// }
 /// ```
 /// for more information, see [Rocket documentation](https://rocket.rs/v0.5-rc/guide/requests/#request-guards).
-// #[derive(JsonSchema)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
   /// expiration time
@@ -45,10 +45,9 @@ pub struct Claims {
 ///
 /// let decoded_token = encoded_token.decode();
 /// ```
-// #[derive(JsonSchema)]
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, ToSchema)]
 pub struct ClaimsEncoded {
-  encoded_claims: String,
+  pub encoded_claims: String,
 }
 
 impl ClaimsEncoded {
@@ -279,87 +278,3 @@ pub async fn auth(State(AppState { pool,.. }): State<AppState>, TypedHeader(Auth
 
   Err(error_status)
 }
-
-use super::shared_album_link::shared_album_link;
-
-pub async fn mixed_auth(State(state): State<AppState>, bearer: Option<TypedHeader<Authorization<authorization::Bearer>>>, special_auth: Option<TypedHeader<Authorization<authorization::Basic>>>, req: Request<Body>, next: Next) -> Result<Response, StatusCode> {
-  if let Some(bearer) = bearer {
-    if let Ok(result) = auth(State(state), bearer, req, next).await {
-      return Ok(result);
-    }
-  } else if let Some(special_auth) = special_auth {
-    if let Ok(result) = shared_album_link(State(state), special_auth, req, next).await {
-      return Ok(result);
-    }
-  }
-
-  Err(StatusCode::UNAUTHORIZED)
-}
-
-// impl<'a, 'r> OpenApiFromRequest<'a> for Claims {
-//   fn from_request_input(
-//     _gen: &mut OpenApiGenerator,
-//     _name: String,
-//     _required: bool,
-//   ) -> rocket_okapi::Result<RequestHeaderInput> {
-//     let mut security_req = SecurityRequirement::new();
-//     // each security requirement needs a specific key in the openapi docs
-//     security_req.insert("BearerAuth".into(), Vec::new());
-
-//     // The scheme for the security needs to be defined as well
-//     // https://swagger.io/docs/specification/authentication/basic-authentication/
-//     let security_scheme = SecurityScheme {
-//       description: Some("requires a bearer token to access".into()),
-//       // this will show where and under which name the value will be found in the HTTP header
-//       // in this case, the header key x-api-key will be searched
-//       // other alternatives are "query", "cookie" according to the openapi specs.
-//       // [link](https://swagger.io/specification/#security-scheme-object)
-//       // which also is where you can find examples of how to create a JWT scheme for example
-//       data: SecuritySchemeData::Http {
-//         scheme: String::from("bearer"),
-//         bearer_format: Some(String::from("JWT")),
-//       },
-//       extensions: Object::default(),
-//     };
-
-//     Ok(RequestHeaderInput::Security(
-//       // scheme identifier is the keyvalue under which this security_scheme will be filed in
-//       // the openapi.json file
-//       "BearerAuth".to_owned(),
-//       security_scheme,
-//       security_req,
-//     ))
-//   }
-// }
-
-// impl<'a, 'r> OpenApiFromRequest<'a> for DbConn {
-//   fn from_request_input(
-//     _gen: &mut OpenApiGenerator,
-//     _name: String,
-//     required: bool,
-//   ) -> rocket_okapi::Result<RequestHeaderInput> {
-//     Ok(RequestHeaderInput::None)
-//   }
-// }
-
-// /// Returns an empty, default `Response`. Always returns `Ok`.
-// /// Defines the possible response for this request guard
-// impl<'a, 'r: 'a> rocket::response::Responder<'a, 'r> for Claims {
-//   fn respond_to(self, _: &Request<'_>) -> rocket::response::Result<'static> {
-//     Ok(Response::new())
-//   }
-// }
-
-// impl<'a, 'r: 'a> rocket::response::Responder<'a, 'r> for DbConn {
-//   fn respond_to(self, _: &Request<'_>) -> rocket::response::Result<'static> {
-//     Ok(Response::new())
-//   }
-// }
-
-// /// Defines the possible responses for this request guard for the openapi docs (not used yet)
-// impl<'a, 'r: 'a> OpenApiResponder<'a, 'r> for Claims {
-//   fn responses(_: &mut OpenApiGenerator) -> rocket_okapi::Result<Responses> {
-//     let responses = Responses::default();
-//     Ok(responses)
-//   }
-// }

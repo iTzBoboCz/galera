@@ -5,6 +5,7 @@ use crate::db;
 use crate::db::media::select_media_by_uuid;
 use crate::directories::Directories;
 use crate::models::{Folder, Media};
+use crate::openapi::tags::{AUTH_PROTECTED, MEDIA};
 use axum::Extension;
 use axum::body::Body;
 use axum::extract::State;
@@ -13,12 +14,12 @@ use axum::{Json, http::StatusCode};
 use axum_extra::routing::TypedPath;
 use chrono::NaiveDateTime;
 use tracing::error;
+use utoipa::ToSchema;
 use crate::{AppState, scan};
 use serde::{Deserialize, Serialize};
 use tokio_util::io::ReaderStream;
 
-// #[derive(JsonSchema)]
-#[derive(Serialize, Deserialize, Queryable)]
+#[derive(Serialize, Deserialize, Queryable, ToSchema)]
 pub struct MediaResponse {
   pub filename: String,
   pub owner_id: i32,
@@ -47,13 +48,22 @@ pub struct MediaRoute;
 
 /// Gets a list of all media
 // FIXME: skips new media in /gallery/username/<medianame>; /gallery/username/<some_folder>/<medianame> works
+#[utoipa::path(
+  get,
+  path = "/media",
+  security(("BearerAuth" = [])),
+  tags = [ MEDIA, AUTH_PROTECTED ],
+  responses(
+    (status = 200, description = "List of media", body = Vec<MediaResponse>),
+    (status = 401, description = "Unauthorized"),
+    (status = 500, description = "Internal server error")
+  )
+)]
 pub async fn media_structure(
   _: MediaRoute,
   State(AppState { pool,.. }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>
 ) -> Result<Json<Vec<MediaResponse>>, StatusCode> {
-  error!("user_id: {}", claims.user_id);
-
   let structure = db::media::get_media_structure(pool.get().await.unwrap(), claims.user_id).await;
 
   Ok(Json(structure))
@@ -65,7 +75,22 @@ pub struct MediaUuidRoute {
   media_uuid: String,
 }
 
-// /// Returns a media
+/// Returns a media
+#[utoipa::path(
+  get,
+  path = "/media/{media_uuid}",
+  params(
+    ("media_uuid" = String, Path, description = "Media UUID")
+  ),
+  security(("BearerAuth" = [])),
+  tags = [ MEDIA, AUTH_PROTECTED ],
+  responses(
+    (status = 200, description = "Binary media stream", content_type = "application/octet-stream", body = Vec<u8>),
+    (status = 401, description = "Unauthorized"),
+    (status = 404, description = "Media not found"),
+    (status = 500, description = "Internal server error")
+  )
+)]
 pub async fn get_media_by_uuid(
   MediaUuidRoute { media_uuid }: MediaUuidRoute,
   State(AppState { pool,.. }): State<AppState>,
@@ -129,8 +154,7 @@ pub async fn get_media_by_uuid(
   Ok(Body::from_stream(stream))
 }
 
-// #[derive(JsonSchema)]
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, ToSchema)]
 pub struct MediaDescription {
   description: Option<String>
 }
@@ -142,6 +166,23 @@ pub struct MediaUuidDescriptionRoute {
 }
 
 /// Updates description of a media
+#[utoipa::path(
+  put,
+  path = "/media/{media_uuid}/description",
+  request_body = MediaDescription,
+  params(
+    ("media_uuid" = String, Path, description = "Media UUID")
+  ),
+  security(("BearerAuth" = [])),
+  tags = [ MEDIA, AUTH_PROTECTED ],
+  responses(
+    (status = 200, description = "Description updated"),
+    (status = 401, description = "Unauthorized"),
+    (status = 403, description = "Forbidden"),
+    (status = 404, description = "Media not found"),
+    (status = 500, description = "Internal server error")
+  )
+)]
 pub async fn media_update_description(
   MediaUuidDescriptionRoute { media_uuid }: MediaUuidDescriptionRoute,
   State(AppState { pool,.. }): State<AppState>,
@@ -172,6 +213,22 @@ pub async fn media_update_description(
 }
 
 /// Deletes description of a media
+#[utoipa::path(
+  delete,
+  path = "/media/{media_uuid}/description",
+  params(
+    ("media_uuid" = String, Path, description = "Media UUID")
+  ),
+  security(("BearerAuth" = [])),
+  tags = [ MEDIA, AUTH_PROTECTED ],
+  responses(
+    (status = 200, description = "Description deleted"),
+    (status = 401, description = "Unauthorized"),
+    (status = 403, description = "Forbidden"),
+    (status = 404, description = "Media not found"),
+    (status = 500, description = "Internal server error")
+  )
+)]
 pub async fn media_delete_description(
   MediaUuidDescriptionRoute { media_uuid }: MediaUuidDescriptionRoute,
   State(AppState { pool,.. }): State<AppState>,
@@ -198,6 +255,17 @@ pub async fn media_delete_description(
 pub struct MediaLikedRoute;
 
 /// Returns a list of liked media.
+#[utoipa::path(
+  get,
+  path = "/media/liked",
+  security(("BearerAuth" = [])),
+  tags = [ MEDIA, AUTH_PROTECTED ],
+  responses(
+    (status = 200, description = "Liked media", body = Vec<MediaResponse>),
+    (status = 401, description = "Unauthorized"),
+    (status = 500, description = "Internal server error")
+  )
+)]
 pub async fn get_media_liked_list(
   _: MediaLikedRoute,
   State(AppState { pool,.. }): State<AppState>,
@@ -221,6 +289,21 @@ pub struct MediaUuidLikeRoute {
 }
 
 /// Likes the media.
+#[utoipa::path(
+  post,
+  path = "/media/{media_uuid}/like",
+  params(
+    ("media_uuid" = String, Path, description = "Media UUID")
+  ),
+  security(("BearerAuth" = [])),
+  tags = [ MEDIA, AUTH_PROTECTED ],
+  responses(
+    (status = 200, description = "Liked a media"),
+    (status = 401, description = "Unauthorized"),
+    (status = 404, description = "Media not found"),
+    (status = 409, description = "Already liked")
+  )
+)]
 pub async fn media_like(
   MediaUuidLikeRoute { media_uuid }: MediaUuidLikeRoute,
   State(AppState { pool,.. }): State<AppState>,
@@ -242,6 +325,22 @@ pub async fn media_like(
 }
 
 /// Unlikes the media.
+#[utoipa::path(
+  delete,
+  path = "/media/{media_uuid}/like",
+  params(
+    ("media_uuid" = String, Path, description = "Media UUID")
+  ),
+  security(("BearerAuth" = [])),
+  tags = [ MEDIA, AUTH_PROTECTED ],
+  responses(
+    (status = 200, description = "Unliked a media"),
+    (status = 204, description = "No changes made"),
+    (status = 404, description = "Media not found"),
+    (status = 404, description = "Media not found"),
+    (status = 500, description = "Internal server error")
+  )
+)]
 pub async fn media_unlike(
   MediaUuidLikeRoute { media_uuid }: MediaUuidLikeRoute,
   State(AppState { pool,.. }): State<AppState>,

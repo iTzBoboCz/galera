@@ -1,28 +1,27 @@
 use std::sync::Arc;
-use crate::auth::shared_album_link::{SharedAlbumLinkSecurity, hash_password};
+use crate::auth::mixed_auth::MixedAuth;
+use crate::auth::shared_album_link::hash_password;
 use crate::auth::token::Claims;
 use crate::models::{Album, AlbumShareLink, NewAlbumMedia, NewAlbumShareLink};
+use crate::openapi::tags::{ALBUMS, AUTH_MIXED, AUTH_PROTECTED};
 use crate::routes::media::MediaResponse;
 use axum::Extension;
-use axum::body::Body;
 use axum::extract::State;
-use axum::http::Request;
 use axum::{Json, http::StatusCode};
 use axum_extra::routing::TypedPath;
 use tracing::error;
+use utoipa::ToSchema;
 use crate::{AppState, db};
 use chrono::{NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-// #[derive(JsonSchema)]
-#[derive(Serialize, Deserialize, Queryable)]
+#[derive(Serialize, Deserialize, Queryable, ToSchema)]
 pub struct AlbumInsertData {
   pub name: String,
   pub description: Option<String>,
 }
 
-// #[derive(JsonSchema)]
-#[derive(Serialize, Deserialize, Queryable)]
+#[derive(Serialize, Deserialize, Queryable, ToSchema)]
 pub struct AlbumResponse {
   pub owner_id: i32,
   pub name: String,
@@ -56,6 +55,18 @@ pub struct AlbumRoute;
 
 /// Creates a new album
 // TODO: change response later
+#[utoipa::path(
+  post,
+  path = "/album",
+  security(("BearerAuth" = [])),
+  tags = [ALBUMS, AUTH_PROTECTED],
+  request_body = AlbumInsertData,
+  responses(
+    (status = 200, description = "Album created (or null on failure)", body = Option<AlbumResponse>),
+    (status = 401, description = "Unauthorized"),
+    (status = 500, description = "Internal server error")
+  )
+)]
 pub async fn create_album(
   _: AlbumRoute,
   State(AppState { pool,.. }): State<AppState>,
@@ -78,8 +89,7 @@ pub async fn create_album(
   Json(Some(AlbumResponse::from(album)))
 }
 
-// #[derive(JsonSchema)]
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct AlbumAddMedia {
   album_uuid: String,
   media_uuid: String,
@@ -90,6 +100,20 @@ pub struct AlbumAddMedia {
 pub struct AlbumMediaRoute;
 
 /// Adds media to an album
+#[utoipa::path(
+  post,
+  path = "/album/media",
+  security(("BearerAuth" = [])),
+  tags = [ALBUMS, AUTH_PROTECTED],
+  request_body = Vec<AlbumAddMedia>,
+  responses(
+    (status = 200, description = "Media added to album"),
+    (status = 400, description = "Bad request"),
+    (status = 401, description = "Unauthorized"),
+    (status = 403, description = "Forbidden"),
+    (status = 500, description = "Internal server error")
+  )
+)]
 pub async fn album_add_media(
   _: AlbumMediaRoute,
   State(AppState { pool,.. }): State<AppState>,
@@ -135,6 +159,16 @@ pub async fn album_add_media(
 }
 
 /// Retrieves a list of albums of an authenticated user
+#[utoipa::path(
+  get,
+  path = "/album",
+  security(("BearerAuth" = [])),
+  tags = [ALBUMS, AUTH_PROTECTED],
+  responses(
+    (status = 200, description = "Album list", body = Vec<AlbumResponse>),
+    (status = 401, description = "Unauthorized")
+  )
+)]
 pub async fn get_album_list(
   _: AlbumRoute,
   State(AppState { pool,.. }): State<AppState>,
@@ -157,10 +191,28 @@ pub struct AlbumUuidMediaRoute {
 
 /// Gets a list of media in an album
 // TODO: consider using the Extension extractor for auth here
+#[utoipa::path(
+  get,
+  path = "/album/{album_uuid}/media",
+  params(
+    ("album_uuid" = String, Path, description = "Album UUID")
+  ),
+  security(
+    ("BearerAuth" = []),
+    ("BasicSharedAlbumLinkAuth" = [])
+  ),
+  tags = [ALBUMS, AUTH_MIXED],
+  responses(
+    (status = 200, description = "Album media", body = Vec<MediaResponse>),
+    (status = 401, description = "Unauthorized"),
+    (status = 404, description = "Album not found"),
+    (status = 500, description = "Internal server error")
+  )
+)]
 pub async fn get_album_structure(
   AlbumUuidMediaRoute { album_uuid }: AlbumUuidMediaRoute,
   State(AppState { pool,.. }): State<AppState>,
-  request: Request<Body>
+  Extension(auth): Extension<Arc<MixedAuth>>,
 ) -> Result<Json<Vec<MediaResponse>>, StatusCode> {
   let Some(album_id) = db::albums::select_album_id(pool.get().await.unwrap(), album_uuid).await else {
     return Err(StatusCode::NOT_FOUND);
@@ -170,7 +222,7 @@ pub async fn get_album_structure(
     return Err(StatusCode::NOT_FOUND);
   };
 
-  if let Some(claims) = request.extensions().get::<Arc<Claims>>() {
+  if let Some(claims) = auth.claims.as_deref() {
       if album.owner_id != claims.user_id {
         return Err(StatusCode::UNAUTHORIZED);
       }
@@ -183,7 +235,8 @@ pub async fn get_album_structure(
       // }
 
       // TODO: check if non-owner user has permission to access the album (preparation for shared albums)
-  } else if let Some(_special) = request.extensions().get::<Arc<SharedAlbumLinkSecurity>>() {
+  } else if let Some(_special) = auth.shared_album_link.as_deref() {
+      // check if the shared album link has access to the album
     // TODO: maybe check more things
   } else {
     return Err(StatusCode::UNAUTHORIZED);
@@ -207,13 +260,32 @@ pub struct AlbumUuidRoute {
 }
 
 // #[derive(JsonSchema)
-#[derive(Serialize, Deserialize, Queryable)]
+#[derive(Serialize, Deserialize, Queryable, ToSchema)]
 pub struct AlbumUpdateData {
   pub name: Option<String>,
   pub description: Option<String>,
 }
 
 /// Updates already existing album
+#[utoipa::path(
+  put,
+  path = "/album/{album_uuid}",
+  params(
+    ("album_uuid" = String, Path, description = "Album UUID")
+  ),
+  request_body = AlbumUpdateData,
+  security(("BearerAuth" = [])),
+  tags = [ALBUMS, AUTH_PROTECTED],
+  responses(
+    (status = 200, description = "Album updated"),
+    (status = 204, description = "No changes"),
+    (status = 401, description = "Unauthorized"),
+    (status = 403, description = "Forbidden"),
+    (status = 404, description = "Album not found"),
+    (status = 422, description = "Unprocessable entity"),
+    (status = 500, description = "Internal server error")
+  )
+)]
 pub async fn update_album(
   AlbumUuidRoute { album_uuid }: AlbumUuidRoute,
   State(AppState { pool,.. }): State<AppState>,
@@ -250,6 +322,22 @@ pub async fn update_album(
 }
 
 /// Deletes an album
+#[utoipa::path(
+  delete,
+  path = "/album/{album_uuid}",
+  params(
+    ("album_uuid" = String, Path, description = "Album UUID")
+  ),
+  security(("BearerAuth" = [])),
+  tags = [ALBUMS, AUTH_PROTECTED],
+  responses(
+    (status = 200, description = "Album deleted"),
+    (status = 401, description = "Unauthorized"),
+    (status = 403, description = "Forbidden"),
+    (status = 404, description = "Album not found"),
+    (status = 500, description = "Internal server error")
+  )
+)]
 pub async fn delete_album(
   AlbumUuidRoute { album_uuid }: AlbumUuidRoute,
   State(AppState { pool,.. }): State<AppState>,
@@ -274,13 +362,12 @@ pub async fn delete_album(
   }
 
   let deleted = db::albums::delete_album(pool.get().await.unwrap(), album_id).await;
-  if deleted.is_err() { return Err(StatusCode::IM_A_TEAPOT) }
+  if deleted.is_err() { return Err(StatusCode::INTERNAL_SERVER_ERROR) }
 
   Ok(StatusCode::OK)
 }
 
-// #[derive(JsonSchema)]
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, ToSchema)]
 pub struct AlbumShareLinkInsert {
   pub expiration: Option<NaiveDateTime>,
   pub password: Option<String>,
@@ -305,13 +392,11 @@ impl AlbumShareLinkInsert {
   }
 }
 
-// #[derive(JsonSchema)]
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, ToSchema)]
 pub struct SharedAlbumLinkResponse {
   uuid: String,
   expiration: Option<NaiveDateTime>,
 }
-
 
 #[derive(TypedPath, Deserialize)]
 #[typed_path("/album/{album_uuid}/share/link")]
@@ -320,6 +405,23 @@ pub struct AlbumUuidShareLinkRoute {
 }
 
 /// Creates a new album share link.
+#[utoipa::path(
+  post,
+  path = "/album/{album_uuid}/share/link",
+  params(
+    ("album_uuid" = String, Path, description = "Album UUID")
+  ),
+  request_body = AlbumShareLinkInsert,
+  security(("BearerAuth" = [])),
+  tags = [ALBUMS, AUTH_PROTECTED],
+  responses(
+    (status = 200, description = "Share link created", body = SharedAlbumLinkResponse),
+    (status = 401, description = "Unauthorized"),
+    (status = 403, description = "Forbidden"),
+    (status = 404, description = "Album not found"),
+    (status = 500, description = "Internal server error")
+  )
+)]
 pub async fn create_album_share_link(
   AlbumUuidShareLinkRoute { album_uuid }: AlbumUuidShareLinkRoute,
   State(AppState { pool,.. }): State<AppState>,
@@ -371,6 +473,22 @@ impl From<&AlbumShareLink> for SharedAlbumLinkResponse {
 }
 
 /// Gets a list of album share links.
+#[utoipa::path(
+  get,
+  path = "/album/{album_uuid}/share/link",
+  params(
+    ("album_uuid" = String, Path, description = "Album UUID")
+  ),
+  security(("BearerAuth" = [])),
+  tags = [ALBUMS, AUTH_PROTECTED],
+  responses(
+    (status = 200, description = "Album share links", body = Vec<SharedAlbumLinkResponse>),
+    (status = 401, description = "Unauthorized"),
+    (status = 403, description = "Forbidden"),
+    (status = 404, description = "Album not found"),
+    (status = 500, description = "Internal server error")
+  )
+)]
 pub async fn get_album_share_links(
   AlbumUuidShareLinkRoute { album_uuid }: AlbumUuidShareLinkRoute,
   State(AppState { pool,.. }): State<AppState>,
@@ -397,8 +515,7 @@ pub async fn get_album_share_links(
   Ok(Json(result))
 }
 
-// #[derive(JsonSchema)]
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct AlbumShareLinkBasic {
   pub album_uuid: String,
   pub is_password_protected: bool,
@@ -424,6 +541,20 @@ pub struct AlbumShareLinkUuidRoute {
 }
 
 /// Gets basic information about album share link.
+#[utoipa::path(
+  get,
+  path = "/album/share/link/{album_share_link_uuid}",
+  params(
+    ("album_share_link_uuid" = String, Path, description = "Album Share Link UUID")
+  ),
+  security(("BearerAuth" = [])),
+  tags = [ALBUMS, AUTH_PROTECTED],
+  responses(
+    (status = 200, description = "Share link info", body = AlbumShareLinkBasic),
+    (status = 404, description = "Not found"),
+    (status = 500, description = "Internal server error")
+  )
+)]
 pub async fn get_album_share_link(
   AlbumShareLinkUuidRoute { album_share_link_uuid }: AlbumShareLinkUuidRoute,
   State(AppState { pool,.. }): State<AppState>
@@ -447,6 +578,24 @@ pub async fn get_album_share_link(
 }
 
 /// Updates already existing album share link.
+#[utoipa::path(
+  put,
+  path = "/album/share/link/{album_share_link_uuid}",
+  request_body = AlbumShareLinkInsert,
+  params(
+    ("album_share_link_uuid" = String, Path, description = "Album Share Link UUID")
+  ),
+  security(("BearerAuth" = [])),
+  tags = [ALBUMS, AUTH_PROTECTED],
+  responses(
+    (status = 200, description = "Album share link updated"),
+    (status = 204, description = "No changes"),
+    (status = 401, description = "Unauthorized"),
+    (status = 403, description = "Forbidden"),
+    (status = 404, description = "Not found"),
+    (status = 500, description = "Internal server error")
+  )
+)]
 pub async fn update_album_share_link(
   AlbumShareLinkUuidRoute { album_share_link_uuid }: AlbumShareLinkUuidRoute,
   State(AppState { pool,.. }): State<AppState>,
@@ -479,6 +628,23 @@ pub async fn update_album_share_link(
 }
 
 /// Deletes an album share link.
+#[utoipa::path(
+  delete,
+  path = "/album/share/link/{album_share_link_uuid}",
+  params(
+    ("album_share_link_uuid" = String, Path, description = "Album Share Link UUID")
+  ),
+  security(("BearerAuth" = [])),
+  tags = [ALBUMS, AUTH_PROTECTED],
+  responses(
+    (status = 200, description = "Album share link deleted"),
+    (status = 204, description = "Nothing deleted"),
+    (status = 401, description = "Unauthorized"),
+    (status = 403, description = "Forbidden"),
+    (status = 404, description = "Not found"),
+    (status = 500, description = "Internal server error")
+  )
+)]
 pub async fn delete_album_share_link(
   AlbumShareLinkUuidRoute { album_share_link_uuid }: AlbumShareLinkUuidRoute,
   State(AppState { pool,.. }): State<AppState>,
