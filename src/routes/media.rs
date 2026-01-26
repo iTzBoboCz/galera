@@ -75,6 +75,10 @@ pub struct MediaUuidRoute {
   media_uuid: String,
 }
 
+#[derive(ToSchema)]
+#[schema(value_type = String, format = Binary)]
+pub struct BinaryBody(String);
+
 /// Returns a media
 #[utoipa::path(
   get,
@@ -85,7 +89,7 @@ pub struct MediaUuidRoute {
   security(("BearerAuth" = [])),
   tags = [ MEDIA, AUTH_PROTECTED ],
   responses(
-    (status = 200, description = "Binary media stream", content_type = "application/octet-stream", body = Vec<u8>),
+    (status = 200, description = "Binary media stream", content_type = "application/octet-stream", body = BinaryBody),
     (status = 401, description = "Unauthorized"),
     (status = 404, description = "Media not found"),
     (status = 500, description = "Internal server error")
