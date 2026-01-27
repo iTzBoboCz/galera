@@ -161,7 +161,7 @@ async fn main() {
     .typed_get(routes::media::media_structure)
     .typed_get(routes::media::get_media_by_uuid)
     .typed_post(routes::albums::create_album)
-    .typed_get(routes::albums::album_add_media)
+    .typed_post(routes::albums::album_add_media)
     .typed_get(routes::albums::get_album_list)
     .typed_put(routes::albums::update_album)
     .typed_delete(routes::albums::delete_album)
