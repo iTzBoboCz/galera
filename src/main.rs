@@ -18,7 +18,7 @@ use dashmap::DashMap;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
 use openapi::ApiDoc;
 use tracing::{error, info, warn};
-use utoipa_swagger_ui::SwaggerUi;
+use utoipa_swagger_ui::{Config, SwaggerUi};
 use crate::auth::secret::Secret;
 use crate::directories::Directories;
 use axum::{response::{Html, IntoResponse}, routing::get, Router, http::Request, middleware::{Next, self}, extract::{MatchedPath}, body::Body};
@@ -200,6 +200,7 @@ async fn main() {
     .merge(unprotected)
     .merge(mixed_auth)
     .merge(SwaggerUi::new("/swagger-ui")
+      .config(Config::new(["../openapi.json", "../openapi-tagless.json"]))
       .url("/openapi.json", ApiDoc::generate_openapi())
       .url("/openapi-tagless.json", ApiDoc::generate_openapi_tagless())
     )
