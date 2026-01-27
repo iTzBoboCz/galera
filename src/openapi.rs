@@ -1,4 +1,4 @@
-use utoipa::{Modify, OpenApi, openapi::PathItem};
+use utoipa::{Modify, OpenApi, openapi::{PathItem, Server}};
 
 pub mod tags {
   // Authentication tags
@@ -50,7 +50,7 @@ pub mod tags {
     crate::routes::albums::get_album_share_link,
     crate::routes::albums::get_album_structure
   ),
-  modifiers(&BearerSecurityAddon, &OperationIdPrefix)
+  modifiers(&BearerSecurityAddon, &OperationIdPrefix, &ServerPrefix)
 )]
 pub struct ApiDoc;
 
@@ -151,5 +151,18 @@ impl Modify for StripTags {
       }
     }
     doc.tags = None;
+  }
+}
+
+struct ServerPrefix;
+
+impl Modify for ServerPrefix {
+  fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+    // reuse your existing helper
+    let prefix = crate::config::get_backend_url()
+      .map(|u| u.path().to_string()) // "/api/" or "/"
+      .unwrap_or( "/".to_string());
+
+    openapi.servers = Some(vec![Server::new(prefix)]);
   }
 }
