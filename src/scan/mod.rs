@@ -204,15 +204,12 @@ pub fn scan_folder_media(pool: ConnectionPool, parent_folder: Folder, path: Path
     if media.is_none() {
       debug!("{:?} doesnt exist in database", media_scanned);
 
-      let image_dimensions = image::image_dimensions(media_scanned.clone())
-        .ok();
-
-      if image_dimensions.is_none() {
+      let Ok(image_dimensions) = imagesize::size(media_scanned.clone()) else {
         warn!("Image {:?} was skipped as its dimensions are unknown.", media_scanned);
         continue;
-      }
+      };
 
-      executor::block_on(db::media::insert_media(executor::block_on(pool.get()).unwrap(), name, parent_folder.clone(), user_id,  image_dimensions.unwrap(), None, media_scanned));
+      executor::block_on(db::media::insert_media(executor::block_on(pool.get()).unwrap(), name, parent_folder.clone(), user_id,  (image_dimensions.width.try_into().unwrap(), image_dimensions.height.try_into().unwrap()), None, media_scanned));
     }
   }
 }

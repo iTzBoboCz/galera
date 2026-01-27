@@ -1,4 +1,4 @@
-use reqwest::Url;
+use openidconnect::reqwest::Url;
 
 /// Returns normalised BACKEND_URL
 pub fn get_backend_url() -> Option<Url> {

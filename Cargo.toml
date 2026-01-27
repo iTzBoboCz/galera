@@ -20,7 +20,7 @@ diesel_migrations = "2.3.1"
 
 # Logging
 metrics = "0.24.3"
-metrics-exporter-prometheus = "0.18.1"
+metrics-exporter-prometheus = { version = "0.18.1", default-features = false }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
@@ -34,14 +34,12 @@ lazy-regex = "3.5.1"
 
 # Media
 infer = "0.19.0"
-image = "0.25.9"
+imagesize = "0.14.0"
 
 # Utilities
-serde_json = "1.0.149"
 serde = { version = "1.0.228", features = ["derive"] }
 dotenv = "0.15.0"
-chrono = { version = "0.4.43", features = ["serde"] }
-checksums = "0.9.1"
+chrono = { version = "0.4.43", default-features = false, features = ["serde", "std"] }
 futures = "0.3.31"
 uuid = { version = "1.19.0", features = ["v4"] }
 jsonwebtoken = { version = "10.2.0", features = ["rust_crypto"]}
@@ -51,13 +49,11 @@ anyhow = "1.0.100"
 directories = "6.0.0"
 nanoid = "0.4.0"
 sys-info = "0.9.1"
-base64 = "0.22.1"
 walkdir = "2.5.0"
-tokio = { version = "1.49.0", features = ["full"] }
-tokio-util = { version = "0.7.18", features = ["io"]}
+tokio = { version = "1.49.0", features = ["rt-multi-thread", "macros", "fs", "net", "io-util" ] }
+tokio-util = { version = "0.7.18", default-features = false, features = ["io"]}
 tower-http = { version = "0.6.8", features = ["cors", "trace"] }
-openidconnect = { version = "4.0.1", features = ["reqwest"] }
-reqwest = "0.13.1"
+openidconnect = "4.0.1"
 dashmap = "6.1.0"
 
 [dev-dependencies]
