@@ -42,6 +42,7 @@ mod auth;
 mod directories;
 mod oidc;
 mod openapi;
+mod config;
 
 pub type ConnectionPool = Pool<Manager<MysqlConnection>>;
 pub type DbConn = deadpool::managed::Object<Manager<MysqlConnection>>;
