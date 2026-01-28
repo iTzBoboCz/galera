@@ -13,7 +13,7 @@ use openidconnect::{AuthorizationCode, CsrfToken, Nonce, Scope, TokenResponse};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, warn};
 use utoipa::ToSchema;
-use crate::{AppState, db};
+use crate::{AppState, OidcState, db};
 
 #[derive(TypedPath, Deserialize)]
 #[typed_path("/auth/oidc/{provider}/login")]
@@ -30,14 +30,22 @@ pub struct OidcLogin {
   tags = [ AUTH, OIDC, AUTH_PUBLIC ],
   responses(
     (status = 302, description = "Redirect to OIDC provider"),
-    (status = 404, description = "OIDC provider not found")
+    (status = 404, description = "OIDC provider not found"),
+    (status = 503, description = "OIDC is disabled")
   )
 )]
 pub async fn oidc_login(
   OidcLogin { provider }: OidcLogin,
   State(state): State<AppState>,
 ) -> impl IntoResponse {
-  let prov = match state.oidc_providers.get(&provider) {
+    let oidc = match &state.oidc {
+    OidcState::Disabled => {
+      return (StatusCode::SERVICE_UNAVAILABLE, "OIDC is disabled").into_response();
+    }
+    OidcState::Enabled(enabled) => enabled,
+  };
+
+  let prov = match oidc.oidc_providers.get(&provider) {
     Some(p) => p,
     None => return (StatusCode::NOT_FOUND, "Unknown OIDC provider").into_response(),
   };
@@ -58,7 +66,7 @@ pub async fn oidc_login(
     .url();
 
   // Store state -> nonce + provider for callback validation
-  state.login_states.insert(
+  oidc.login_states.insert(
     csrf_token.secret().to_owned(),
     crate::oidc::PendingLogin {
       provider: provider.clone(),
@@ -101,7 +109,8 @@ pub struct OidcCallbackQuery {
     (status = 400, description = "Bad request"),
     (status = 401, description = "Authentication failed"),
     (status = 404, description = "Provider not found"),
-    (status = 500, description = "Internal server error")
+    (status = 500, description = "Internal server error"),
+    (status = 503, description = "OIDC is disabled")
   )
 )]
 pub async fn oidc_callback(
@@ -109,8 +118,16 @@ pub async fn oidc_callback(
   Query(q): Query<OidcCallbackQuery>,
   State(state): State<AppState>
 ) -> impl IntoResponse {
+    // 0) Hard-disable the endpoint if OIDC is disabled
+  let oidc = match &state.oidc {
+    OidcState::Disabled => {
+      return (StatusCode::SERVICE_UNAVAILABLE, "OIDC is disabled").into_response();
+    }
+    OidcState::Enabled(enabled) => enabled,
+  };
+
   // Validate and consume CSRF "state"
-  let pending = match state.login_states.remove(&q.state) {
+  let pending = match oidc.login_states.remove(&q.state) {
     Some((_, p)) => p,
     None => return (StatusCode::BAD_REQUEST, "Invalid/expired state").into_response(),
   };
@@ -125,7 +142,7 @@ pub async fn oidc_callback(
   }
 
   // 2) Get provider client
-  let prov = match state.oidc_providers.get(&provider) {
+  let prov = match oidc.oidc_providers.get(&provider) {
     Some(p) => p,
     None => return (StatusCode::NOT_FOUND, "Unknown OIDC provider").into_response(),
   };
@@ -142,7 +159,7 @@ pub async fn oidc_callback(
   };
 
   let token_response = match token_request
-    .request_async(&state.http_client)
+    .request_async(&oidc.http_client)
     .await
   {
     Ok(t) => t,
@@ -236,32 +253,32 @@ pub struct ServerConfig;
 )]
 pub async fn get_server_config(
   _: ServerConfig,
-  State(AppState { oidc_providers,..}): State<AppState>,
+  State(state): State<AppState>,
 ) -> Json<ServerConfigResponse> {
+  let oidc = match &state.oidc {
+    OidcState::Disabled => Vec::new(),
+    OidcState::Enabled(enabled) => {
+      enabled.oidc_providers
+        .iter()
+        .map(|entry| {
+          let provider = entry.value();
 
-  let oidc = oidc_providers
-    .iter()
-    .map(|entry| {
-      let provider = entry.value();
+          let key = provider.key.clone();
 
-      let key = provider.key.clone();
+          // use OIDC_PROVIDER_KEY when OIDC_DISPLAY_NAME isn't available
+          let display_name = provider.display_name.clone().unwrap_or_else(|| key.clone());
 
-      // use OIDC_PROVIDER_KEY when OIDC_DISPLAY_NAME isn't available
-      let display_name = provider
-        .display_name
-        .clone()
-        .unwrap_or_else(|| key.clone());
-
-      OidcProviderPublic {
-        display_name,
-        login_url: format!("/auth/oidc/{}/login", key),
-        key,
-      }
-    })
-    .collect::<Vec<_>>();
+          OidcProviderPublic {
+            display_name,
+            login_url: format!("/auth/oidc/{}/login", key),
+            key,
+          }
+        })
+        .collect::<Vec<_>>()
+    }
+  };
 
   Json(ServerConfigResponse {
     auth: AuthConfig { oidc },
   })
-
 }

@@ -26,7 +26,7 @@ use deadpool_diesel::{Pool, Runtime, Manager};
 use diesel::{MysqlConnection};
 use diesel_migrations::MigrationHarness;
 use metrics_exporter_prometheus::{Matcher, PrometheusBuilder, PrometheusHandle};
-use std::{future::ready, net::SocketAddr, process, sync::Arc, time::Instant};
+use std::{future::ready, net::SocketAddr, process::ExitCode, sync::Arc, time::Instant};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use tower_http::trace::TraceLayer;
 use openidconnect::reqwest;
@@ -79,13 +79,24 @@ pub struct OidcProviderConfig {
 #[derive(Clone)]
 pub struct AppState {
   pub pool: ConnectionPool,
-  pub oidc_providers: Arc<DashMap<String, OidcProvider>>,
-  pub login_states: Arc<DashMap<String, oidc::PendingLogin>>,
-  pub http_client: reqwest::Client,
+  pub oidc: OidcState
+}
+
+#[derive(Clone)]
+pub enum OidcState {
+  Disabled,
+  Enabled(OidcEnabled)
+}
+
+#[derive(Clone)]
+pub struct OidcEnabled {
+  oidc_providers: Arc<DashMap<String, OidcProvider>>,
+  login_states: Arc<DashMap<String, oidc::PendingLogin>>,
+  http_client: reqwest::Client,
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> ExitCode {
   // Load environmental variables from .env if present (e.g. development environment)
   dotenv::dotenv().ok();
 
@@ -97,66 +108,43 @@ async fn main() {
     .with(tracing_subscriber::fmt::layer())
     .init();
 
-  let dir = Directories::init();
-  if dir.is_err() { panic!("Directories check failed."); }
-
-  let secret_check = check_secret_startup();
-  if secret_check.is_err() {
-    panic!("Secret couldn't be read and/or created: {}", secret_check.unwrap_err());
+  match run().await {
+    Ok(()) => ExitCode::SUCCESS,
+    Err(e) => {
+      error!("{e}");
+      ExitCode::FAILURE
+    }
   }
+}
+
+async fn run() -> Result<(), anyhow::Error> {
+  Directories::init().map_err(|e| {
+    error!("Directories check failed. Stopping server: {e}");
+    e
+  })?;
+
+  check_secret_startup().map_err(|e| {
+    error!("Secret couldn't be read and/or created: {e}");
+    e
+  })?;
 
   let recorder_handle = setup_metrics_recorder();
 
-  let pool = match create_db_pool().await {
-    Ok(pool) => pool,
-    Err(e) => {
-      error!("Couldn't connect to DB: {e}");
-      error!("Stopping server!");
-      process::exit(1)
-    }
-  };
+  let pool = create_db_pool().await.map_err(|e| {
+    error!("Couldn't connect to DB: {e}");
+    anyhow::anyhow!("Stopping server: DB connection failed")
+  })?;
 
   pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
-  let _ = pool.get().await.unwrap().interact(|c| c.run_pending_migrations(MIGRATIONS).map(|_| ())).await.expect("Can't run migrations.");
-
-
-  let http_client = reqwest::ClientBuilder::new()
-    // Following redirects opens the client up to SSRF vulnerabilities.
-    .redirect(reqwest::redirect::Policy::none())
-    .build()
-    .expect("Client should build");
-
-    // Build OIDC provider map (for now: single provider from ENV)
-  let oidc_providers: Arc<DashMap<String, OidcProvider>> = Arc::new(DashMap::new());
-
-  match oidc::build_oidc_client(&http_client).await {
-    Ok(client) => {
-      let display_name = std::env::var("OIDC_PROVIDER_KEY").ok();
-
-      // let map_by_email = std::env::var("OIDC_MAP_BY_EMAIL")
-      //   .map(|v| matches!(v.to_lowercase().as_str(), "true" | "1"))
-      //   .unwrap_or(false);
-      let allow_signup = std::env::var("OIDC_ALLOW_SIGNUP")
-        .map(|v| matches!(v.to_lowercase().as_str(), "true" | "1"))
-        .unwrap_or(false);
-
-      if let Ok(oidc_provider) = std::env::var("OIDC_PROVIDER_KEY") {
-        oidc_providers.insert(oidc_provider.clone(), OidcProvider { key: oidc_provider.clone(), display_name, client, config: OidcProviderConfig { allow_signup } });
-
-        info!("OIDC enabled for provider: {:?}", oidc_provider);
-      }
-    }
-    Err(e) => {
-      // Don't crash server — just disable SSO
-      warn!("OIDC disabled (startup discovery failed): {e}");
-    }
-  }
+  pool.get().await?
+    .interact(|c| c.run_pending_migrations(MIGRATIONS).map(|_| ()))
+    .await
+    .map_err(|e| anyhow::anyhow!("Can't run migrations (interact join error): {e}"))?
+    .map_err(|e| anyhow::anyhow!("Can't run migrations: {e}"))?;
 
   let state = AppState {
-    pool:pool.clone(),
-    oidc_providers,
-    login_states: Arc::new(DashMap::new()),
-    http_client,
+    pool: pool.clone(),
+    oidc: oidc().await
   };
 
   let protected = Router::new()
@@ -209,11 +197,18 @@ async fn main() {
     .layer(TraceLayer::new_for_http())
     .with_state(state);
 
-  // run it
   let addr = SocketAddr::from(([0, 0, 0, 0], 8000));
+  let listener = tokio::net::TcpListener::bind(addr)
+    .await
+    .map_err(|e| anyhow::anyhow!("failed to bind address {addr}: {e}"))?;
+
   info!("listening on http://{}", addr);
-  let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-  axum::serve(listener, app).await.unwrap();
+
+  axum::serve(listener, app)
+    .await
+    .map_err(|e| anyhow::anyhow!("server error: {e}"))?;
+
+  Ok(())
 }
 
 async fn handler() -> Html<&'static str> {
@@ -276,4 +271,60 @@ pub fn check_secret_startup() -> Result<(), std::io::Error> {
 
   info!("The secret.key file was successfully read.");
   Ok(())
+}
+
+pub async fn oidc() -> OidcState {
+  let http_client = match reqwest::ClientBuilder::new()
+    // Following redirects opens the client up to SSRF vulnerabilities.
+    .redirect(reqwest::redirect::Policy::none())
+    .build()
+  {
+    Ok(hc) => hc,
+    Err(e) => {
+      warn!("OIDC disabled (failed to build HTTP client): {e}");
+      return OidcState::Disabled;
+    }
+  };
+
+  // Build OIDC provider map (for now: single provider from ENV)
+  let oidc_providers: Arc<DashMap<String, OidcProvider>> = Arc::new(DashMap::new());
+
+  match oidc::build_oidc_client(&http_client).await {
+    Ok(client) => {
+      let display_name = std::env::var("OIDC_PROVIDER_KEY").ok();
+
+      // let map_by_email = std::env::var("OIDC_MAP_BY_EMAIL")
+      //   .map(|v| matches!(v.to_lowercase().as_str(), "true" | "1"))
+      //   .unwrap_or(false);
+      let allow_signup = std::env::var("OIDC_ALLOW_SIGNUP")
+        .map(|v| matches!(v.to_lowercase().as_str(), "true" | "1"))
+        .unwrap_or(false);
+
+      if let Ok(oidc_provider) = std::env::var("OIDC_PROVIDER_KEY") {
+        oidc_providers.insert(
+          oidc_provider.clone(),
+          OidcProvider {
+            key: oidc_provider.clone(),
+            display_name,
+            client,
+            config: OidcProviderConfig { allow_signup },
+          },
+        );
+
+        info!("OIDC enabled for provider: {:?}", oidc_provider);
+      }
+    }
+    Err(e) => {
+      warn!("OIDC disabled (startup discovery failed): {e}");
+      return OidcState::Disabled;
+    }
+  }
+
+  OidcState::Enabled(
+    OidcEnabled {
+      oidc_providers,
+      login_states: Arc::new(DashMap::new()),
+      http_client,
+    }
+  )
 }
