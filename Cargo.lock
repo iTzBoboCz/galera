@@ -854,6 +854,7 @@ dependencies = [
  "serde",
  "sha2",
  "sys-info",
+ "thiserror 2.0.18",
  "tokio",
  "tokio-util",
  "tower-http",

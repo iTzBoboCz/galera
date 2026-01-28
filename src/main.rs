@@ -97,8 +97,8 @@ async fn main() {
     .with(tracing_subscriber::fmt::layer())
     .init();
 
-  let dir = Directories::new();
-  if dir.is_none() { panic!("Directories check failed."); }
+  let dir = Directories::init();
+  if dir.is_err() { panic!("Directories check failed."); }
 
   let secret_check = check_secret_startup();
   if secret_check.is_err() {

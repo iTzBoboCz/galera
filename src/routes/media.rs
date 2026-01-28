@@ -126,11 +126,9 @@ pub async fn get_media_by_uuid(
     return Err(StatusCode::UNAUTHORIZED);
   }
 
-  let directories = Directories::new();
-  if directories.is_none() { return Err(StatusCode::INTERNAL_SERVER_ERROR); }
-
-  let xdg_data = directories.unwrap().gallery().to_owned();
-  if xdg_data.is_none() { return Err(StatusCode::INTERNAL_SERVER_ERROR); }
+  let Ok(mut path) = Directories::get().gallery_dir() else {
+    return Err(StatusCode::INTERNAL_SERVER_ERROR);
+  };
 
   let mut folders: Vec<Folder> = vec!();
 
@@ -138,8 +136,6 @@ pub async fn get_media_by_uuid(
   folders.push(current_folder.clone());
 
   scan::select_parent_folder_recursive(pool, current_folder, media.owner_id, &mut folders);
-
-  let mut path = xdg_data.unwrap();
 
   if !folders.is_empty() {
     for folder in folders.iter().rev() {

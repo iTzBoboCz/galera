@@ -209,16 +209,12 @@ pub async fn scan_media(
   State(AppState { pool,.. }): State<AppState>,
   Extension(claims): Extension<Arc<Claims>>
 ) -> Result<StatusCode, StatusCode> {
-  let Some(directories) = Directories::new() else {
-    return Err(StatusCode::INTERNAL_SERVER_ERROR);
-  };
-
-  let Some(xdg_data) = directories.gallery().to_owned() else {
+  let Ok(gallery_dir) = Directories::get().gallery_dir() else {
     return Err(StatusCode::INTERNAL_SERVER_ERROR);
   };
 
   // this thread will run until scanning is complete
-  tokio::spawn(scan::scan_root(pool, xdg_data, claims.user_id));
+  tokio::spawn(scan::scan_root(pool, gallery_dir, claims.user_id));
 
   Ok(StatusCode::OK)
 }
