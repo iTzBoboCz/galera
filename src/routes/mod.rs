@@ -194,7 +194,7 @@ pub struct ScanMediaRoute;
 
 /// Searches for new media
 #[utoipa::path(
-  post,
+  get,
   path = "/scan_media",
   tags = [ OTHER, AUTH_PROTECTED ],
   security(("BearerAuth" = [])),
