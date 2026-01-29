@@ -7,6 +7,8 @@ use std::fs;
 use std::fs::create_dir_all;
 use std::path::{Path, PathBuf};
 
+const MAX_DEPTH: usize = 128;
+
 /// checks if the file type is supported.
 /// returns **true** for example for **image/jpeg**
 /// and **false** for **text/json**
@@ -214,30 +216,24 @@ pub fn scan_folder_media(pool: ConnectionPool, parent_folder: Folder, path: Path
   }
 }
 
-/// Recursively selects parent folder.\
-/// You need to pass a vector to which the folders will be appended.
-/// # Example
-/// We're selecting all parent folders of a folder with id 10, where user id is 1.
-/// ```
-/// let mut folders: Vec<Folder> = vec!();
-/// let current_folder = Folder { id: 15, owner_id: 1, parent: Some(10), name: "some_folder" }
-/// folders.push(current_folder.clone());
-///
-/// scan::select_parent_folder_recursive(&conn, current_folder, user_id, &mut folders);
-///
-/// // This produces:
-/// // folders: [Folder { id: 15, owner_id: 1, parent: Some(10), name: "some_folder" }, Folder { id: 10, owner_id: 1, parent: None, name: "root_folder" }]
-/// ```
+/// Selects parent folders.
 // TODO: Write faster recursive function with diesel's sql_query()
-pub fn select_parent_folder_recursive(pool: ConnectionPool, current_folder: Folder, user_id: i32, vec: &mut Vec<Folder>) -> bool {
-  let parent = executor::block_on(db::folders::select_parent_folder(executor::block_on(pool.get()).unwrap(), current_folder, user_id));
-  if parent.is_none() { return false; }
+pub async fn select_parent_folders(pool: ConnectionPool, mut current_folder: Folder, user_id: i32) -> Result<Vec<Folder>, ()> {
+  let mut output = vec![current_folder.clone()];
 
-  vec.push(parent.clone().unwrap());
+  for _ in 0..MAX_DEPTH {
+    let Some(parent) = db::folders::select_parent_folder(pool.get().await.unwrap(), current_folder.clone(), user_id).await else {
+      // no more deeper folders found, return
+      return Ok(output);
+    };
 
-  select_parent_folder_recursive(pool, parent.unwrap(), user_id, vec)
+    output.push(parent.clone());
+    current_folder = parent;
+  }
+
+  // depth error or db error
+  Err(())
 }
-
 
 pub fn folder_get_media(dir: PathBuf) -> Option<Vec<PathBuf>> {
   if !dir.exists() { return None; }

@@ -130,17 +130,14 @@ pub async fn get_media_by_uuid(
     return Err(StatusCode::INTERNAL_SERVER_ERROR);
   };
 
-  let mut folders: Vec<Folder> = vec!();
-
   let Some(current_folder) = db::folders::select_folder(pool.get().await.unwrap(), media.folder_id).await else { return Err(StatusCode::INTERNAL_SERVER_ERROR); };
-  folders.push(current_folder.clone());
 
-  scan::select_parent_folder_recursive(pool, current_folder, media.owner_id, &mut folders);
+  let folders = scan::select_parent_folders(pool, current_folder, media.owner_id)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-  if !folders.is_empty() {
-    for folder in folders.iter().rev() {
-      path = path.join(folder.name.as_str());
-    }
+  for folder in folders.iter().rev() {
+    path = path.join(folder.name.as_str());
   }
   path = path.join(&media.filename);
 
