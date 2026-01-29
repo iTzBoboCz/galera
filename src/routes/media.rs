@@ -4,7 +4,7 @@ use crate::auth::token::Claims;
 use crate::db;
 use crate::db::media::select_media_by_uuid;
 use crate::directories::Directories;
-use crate::models::{Folder, Media};
+use crate::models::Media;
 use crate::openapi::tags::{AUTH_PROTECTED, MEDIA};
 use axum::Extension;
 use axum::body::Body;
@@ -75,6 +75,7 @@ pub struct MediaUuidRoute {
   media_uuid: String,
 }
 
+#[allow(dead_code)]
 #[derive(ToSchema)]
 #[schema(value_type = String, format = Binary)]
 pub struct BinaryBody(String);
@@ -108,7 +109,7 @@ pub async fn get_media_by_uuid(
     }
 
     Err(e) => {
-      error!("DB error selecting oidc identity: {e}");
+      error!("DB DB error selecting media by uuid: {e}");
       return Err(StatusCode::INTERNAL_SERVER_ERROR);
     }
   };
