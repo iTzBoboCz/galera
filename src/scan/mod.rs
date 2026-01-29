@@ -1,8 +1,8 @@
 use crate::{db, ConnectionPool};
 use crate::models::{Folder, NewFolder};
 
-use futures::executor;
 use tracing::{error, info, warn, trace, debug};
+use std::collections::HashMap;
 use std::fs;
 use std::fs::create_dir_all;
 use std::path::{Path, PathBuf};
@@ -123,76 +123,84 @@ pub async fn scan_root(pool: ConnectionPool, xdg_data: PathBuf, user_id: i32) {
 
   let found_folders = scan.unwrap().get_folders();
 
-  add_folders_to_db(pool.clone(), found_folders, user_id).await;
+  let folder_ids = add_folders_to_db(pool.clone(), found_folders.clone(), user_id).await;
 
-  scan_folders_for_media(pool, xdg_data, user_id).await;
+  for (folder, folder_id) in folder_ids.into_iter() {
+    scan_folder_for_media(pool.clone(), xdg_data.join(folder), folder_id, user_id).await;
+  }
 
   info!("Scanning is done.");
 }
 
+#[derive(Debug, Default, Clone)]
+pub struct FolderIndex(HashMap<PathBuf, i32>);
+
+#[allow(dead_code)]
+impl FolderIndex {
+  pub fn insert(&mut self, path: PathBuf, id: i32) {
+    self.0.insert(path, id);
+  }
+
+  pub fn get(&self, path: &PathBuf) -> Option<i32> {
+    self.0.get(path).copied()
+  }
+
+  pub fn iter(&self) -> impl Iterator<Item = (&PathBuf, &i32)> {
+    self.0.iter()
+  }
+
+  pub fn into_iter(self) -> impl Iterator<Item = (PathBuf, i32)> {
+    self.0.into_iter()
+  }
+}
+
 // folders when using NTFS can be max. 260 characters (we currently support max. 255 - Linux maximum and max. VARCHAR size) TODO: warn user when scanning folder that is longer and skip it
-pub async fn add_folders_to_db(pool: ConnectionPool, relative_paths: Vec<PathBuf>, user_id: i32) {
+pub async fn add_folders_to_db(pool: ConnectionPool, relative_paths: Vec<PathBuf>, user_id: i32) -> FolderIndex {
+  let mut folder_ids = FolderIndex::default();
+
   for path in relative_paths {
     debug!("scanning path: {:?}", path);
 
     let string_split = path.to_str().unwrap().split('/').into_iter().map(|f| f.to_owned());
 
     let mut parent: Option<i32> = None;
-    for (i, s) in string_split.enumerate() {
-      let folder_id: Option<i32>;
+    for (i, dirname) in string_split.enumerate() {
       if i == 0 {
         parent = None;
       }
 
-      folder_id = db::folders::select_child_folder_id(pool.get().await.unwrap(), s.clone(), parent, user_id).await;
+      let folder_id = match db::folders::select_child_folder_id(pool.get().await.unwrap(), dirname.clone(), parent, user_id).await {
+        Some(id) => id,
+        None => {
+          let new_folder = NewFolder::new(user_id, dirname.clone(), parent);
 
-      if folder_id.is_none() {
-        let new_folder = NewFolder::new(user_id, s.clone(), parent);
+          let Ok(last_insert_id) = db::folders::insert_folder(pool.get().await.unwrap(), new_folder).await else {
+            error!("Error scanning folder {} in {}", dirname, path.display().to_string());
+            continue;
+          };
 
-        let Ok(last_insert_id) = db::folders::insert_folder(pool.get().await.unwrap(), new_folder).await else {
-          error!("Error scanning folder {} in {}", s, path.display().to_string());
-          return;
-        };
+          last_insert_id
+        },
+      };
 
-        parent = Some(last_insert_id);
-      } else {
-        parent = folder_id;
-      }
+      parent = Some(folder_id);
+    }
+
+    if let Some(folder_id) = parent {
+      folder_ids.insert(path, folder_id);
     }
   }
+
+  folder_ids
 }
 
-pub async fn scan_folders_for_media(pool: ConnectionPool, xdg_data: PathBuf, user_id: i32) {
-  let Some(username) = db::users::get_user_username(pool.get().await.unwrap(), user_id).await else {
+pub async fn scan_folder_for_media(pool: ConnectionPool, absolute_path: PathBuf, folder_id: i32, user_id: i32) {
+  let Some(parent_folder) = db::folders::select_folder(pool.get().await.unwrap(), folder_id).await else {
+    warn!("Folder id {} not found in DB (user_id={})", folder_id, user_id);
     return;
   };
 
-  let Ok(Some(root_folder)) = db::folders::select_root_folder(pool.get().await.unwrap(), user_id).await else {
-    return;
-  };
-
-  scan_select(pool, root_folder, None, xdg_data, user_id, username.clone());
-}
-
-pub fn scan_select(pool: ConnectionPool, parent_folder: Folder, mut path: Option<PathBuf>, xdg_data: PathBuf, user_id: i32, username: String) {
-  if path.is_none() {
-    path = Some(xdg_data.join(parent_folder.name.clone()));
-  }
-  let folders: Vec<Folder> = executor::block_on(db::folders::select_subfolders(executor::block_on(pool.get()).unwrap(), parent_folder.clone(), user_id));
-
-  let path_clean = path.unwrap();
-
-  scan_folder_media(pool.clone(), parent_folder, path_clean.clone(), user_id);
-
-  for folder in folders {
-    scan_select(pool.clone(), folder.clone(), Some(path_clean.clone().join(folder.name)), xdg_data.clone(), user_id, username.clone());
-  }
-}
-
-/// Scans user's folder for media
-pub fn scan_folder_media(pool: ConnectionPool, parent_folder: Folder, path: PathBuf, user_id: i32) {
-  // get files in a folder
-  let Some(media_scanned_vec) = folder_get_media(path) else {
+  let Some(media_scanned_vec) = folder_get_media(absolute_path) else {
     return;
   };
 
@@ -201,7 +209,8 @@ pub fn scan_folder_media(pool: ConnectionPool, parent_folder: Folder, path: Path
   for media_scanned in media_scanned_vec {
     let name = media_scanned.file_name().unwrap().to_str().unwrap().to_owned();
 
-    let media: Option<i32> = executor::block_on(db::media::check_if_media_present(executor::block_on(pool.get()).unwrap(), name.clone(), parent_folder.clone(), user_id));
+    let media = db::media::check_if_media_present(pool.get().await.unwrap(), name.clone(), parent_folder.clone(), user_id)
+      .await;
 
     if media.is_none() {
       debug!("{:?} doesnt exist in database", media_scanned);
@@ -211,7 +220,8 @@ pub fn scan_folder_media(pool: ConnectionPool, parent_folder: Folder, path: Path
         continue;
       };
 
-      executor::block_on(db::media::insert_media(executor::block_on(pool.get()).unwrap(), name, parent_folder.clone(), user_id,  (image_dimensions.width.try_into().unwrap(), image_dimensions.height.try_into().unwrap()), None, media_scanned));
+      db::media::insert_media(pool.get().await.unwrap(), name, parent_folder.clone(), user_id,  (image_dimensions.width.try_into().unwrap(), image_dimensions.height.try_into().unwrap()), None, media_scanned)
+      .await;
     }
   }
 }

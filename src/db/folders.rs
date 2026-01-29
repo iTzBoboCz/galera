@@ -47,6 +47,7 @@ pub async fn select_child_folder_id(conn: DbConn, name: String, parent: Option<i
   }
 }
 
+#[allow(dead_code)]
 pub async fn select_root_folder(conn: DbConn, user_id: i32) -> Result<Option<Folder>, diesel::result::Error> {
   conn.interact(move |c| {
     folder::table
@@ -57,6 +58,7 @@ pub async fn select_root_folder(conn: DbConn, user_id: i32) -> Result<Option<Fol
   }).await.unwrap()
 }
 
+#[allow(dead_code)]
 pub async fn select_subfolders(conn: DbConn, parent_folder: Folder, user_id: i32) -> Vec<Folder> {
   conn.interact(move |c| {
     folder::table
