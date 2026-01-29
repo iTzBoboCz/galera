@@ -19,50 +19,51 @@ pub enum ScanError {
   ReadDir(#[from] io::Error),
 }
 
+const SUPPORTED_MIME_TYPES: &[&str] = &[
+  "image/jpeg",
+  "image/png",
+  // "image/gif",
+  "image/webp",
+  // "image/x-canon-cr2",
+  // "image/tiff",
+  // "image/bmp",
+  // "image/heif",
+  // "image/avif",
+  // "video/mp4",
+  // "video/x-m4v",
+  // "video/x-matroska",
+  // "video/webm",
+  // "video/quicktime",
+  // "video/x-msvideo",
+  // "video/x-ms-wmv",
+  // "video/mpeg",
+  // "video/x-flv",
+  // "audio/midi",
+  // "audio/mpeg",
+  // "audio/m4a",
+  // "audio/ogg",
+  // "audio/x-flac",
+  // "audio/x-wav",
+  // "audio/amr",
+  // "audio/aac",
+];
+
 /// checks if the file type is supported.
 /// returns **true** for example for **image/jpeg**
 /// and **false** for **text/json**
-pub fn is_media_supported(pathbuf: &Path) -> bool {
-  let valid_mime_types = [
-    "image/jpeg",
-    "image/png",
-    // "image/gif",
-    "image/webp",
-    // "image/x-canon-cr2",
-    // "image/tiff",
-    // "image/bmp",
-    // "image/heif",
-    // "image/avif",
-    // "video/mp4",
-    // "video/x-m4v",
-    // "video/x-matroska",
-    // "video/webm",
-    // "video/quicktime",
-    // "video/x-msvideo",
-    // "video/x-ms-wmv",
-    // "video/mpeg",
-    // "video/x-flv",
-    // "audio/midi",
-    // "audio/mpeg",
-    // "audio/m4a",
-    // "audio/ogg",
-    // "audio/x-flac",
-    // "audio/x-wav",
-    // "audio/amr",
-    // "audio/aac",
-  ];
-
-  let Ok(Some(kind)) = infer::get_from_path(pathbuf) else {
+pub fn is_media_supported(path: &Path) -> bool {
+  let Ok(Some(kind)) = infer::get_from_path(path) else {
     return false;
   };
 
-  if valid_mime_types.contains(&kind.mime_type()) {
-    trace!("Found: {:?} with type: {:?}", pathbuf, kind.mime_type());
+  let mime = kind.mime_type();
+  let ok = SUPPORTED_MIME_TYPES.contains(&mime);
 
-    return true;
+  if ok {
+    trace!("Found: {:?} with type: {:?}", path, mime);
   }
 
-  false
+  ok
 }
 
 /// Outputs a list of populated folders.
