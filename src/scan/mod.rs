@@ -1,13 +1,23 @@
 use crate::{db, ConnectionPool};
 use crate::models::{Folder, NewFolder};
 
+use thiserror::Error;
 use tracing::{error, info, warn, trace, debug};
 use std::collections::HashMap;
-use std::fs;
+use std::{fs, io};
 use std::fs::create_dir_all;
 use std::path::{Path, PathBuf};
 
 const MAX_DEPTH: usize = 128;
+
+#[derive(Debug, Error)]
+pub enum ScanError {
+  #[error("failed to create user root: {0}")]
+  CreateUserRoot(io::Error),
+
+  #[error("failed to read directory: {0}")]
+  ReadDir(#[from] io::Error),
+}
 
 /// checks if the file type is supported.
 /// returns **true** for example for **image/jpeg**
@@ -55,81 +65,70 @@ pub fn is_media_supported(pathbuf: &Path) -> bool {
   false
 }
 
-#[allow(dead_code)]
-pub struct Scan {
-  user_id: i32,
-  username: String,
-  directory: PathBuf
-}
+/// Outputs a list of populated folders.
+// TODO: find out which is better: strip -> sort vs sort -> strip
+pub fn get_folders(directory: &Path, username: &str) -> Vec<PathBuf> {
+  let mut dirs = vec![];
 
-impl Scan {
-  pub async fn new(pool: ConnectionPool, user_id: i32, directory: PathBuf) -> Option<Self> {
-    let username = db::users::get_user_username(pool.get().await.unwrap(), user_id).await?;
+  let root = directory.join(username);
 
-    Some(Self {
-      user_id,
-      username,
-      directory
-    })
+  let walker = walkdir::WalkDir::new(&root)
+    .follow_links(false)
+    .into_iter();
+
+  for entry in walker {
+    let entry = match entry {
+      Ok(en) => en,
+      Err(e) => {
+        warn!("walkdir error: {}", e);
+        continue;
+      },
+    };
+
+    let path = entry.into_path();
+    if !path.is_file() { continue; }
+
+    let Some(parent) = path.parent() else { continue; };
+
+    let strip = match parent.strip_prefix(directory) {
+      Ok(p) => p.to_path_buf(),
+      Err(_) => continue,
+    };
+    dirs.push(strip);
   }
 
-  /// Outputs a list of populated folders.
-  // TODO: find out which is better: strip -> sort vs sort -> strip
-  pub fn get_folders(&self) -> Vec<PathBuf> {
-    let mut dirs = vec![];
+  dirs.sort();
+  dirs.dedup();
 
-    for entry in walkdir::WalkDir::new(PathBuf::from(&self.directory).join(&self.username)) {
-      if entry.is_ok() {
-        let path = entry.unwrap().into_path();
-        if path.is_file() {
-          if let Some(parent) = path.parent() {
-            let strip = PathBuf::from(parent.strip_prefix(&self.directory).unwrap());
-            dirs.push(strip);
-          }
-        }
-      }
-    }
-
-    dirs.sort();
-    dirs.dedup();
-
-    dirs
-  }
+  dirs
 }
 
 /// scans folder of a given user
-pub async fn scan_root(pool: ConnectionPool, xdg_data: PathBuf, user_id: i32) {
+pub async fn scan_root(pool: ConnectionPool, xdg_data: PathBuf, user_id: i32) -> Result<(), ScanError> {
   // root directory
-  let username_option = db::users::get_user_username(pool.get().await.unwrap(), user_id).await;
-  if username_option.is_none() { return; }
+  let Some(username) = db::users::get_user_username(pool.get().await.unwrap(), user_id).await else {
+    debug!("Scan skipped: user id {} doesn't exist.", user_id);
+    return Ok(());
+  };
 
-  let username = username_option.unwrap();
-
-  let current_dir = xdg_data.join(username.clone());
+  let user_root = xdg_data.join(username.clone());
 
   info!("Scanning files and folders for user {} started.", username);
 
-  if !Path::new(&current_dir).exists() {
-    let result = create_dir_all(Path::new(&current_dir));
-
-    if result.is_err() {
-      error!("Failed to create user folder.");
-      return;
-    }
+  if !user_root.exists() {
+    create_dir_all(&user_root).map_err(ScanError::CreateUserRoot)?;
   }
 
-  let scan = Scan::new(pool.clone(), user_id, xdg_data.clone()).await;
-  if scan.is_none() { return }
+  let found_folders = get_folders(&xdg_data, &username);
 
-  let found_folders = scan.unwrap().get_folders();
-
-  let folder_ids = add_folders_to_db(pool.clone(), found_folders.clone(), user_id).await;
+  let folder_ids = add_folders_to_db(pool.clone(), found_folders, user_id).await;
 
   for (folder, folder_id) in folder_ids.into_iter() {
-    scan_folder_for_media(pool.clone(), xdg_data.join(folder), folder_id, user_id).await;
+    let _ = scan_folder_for_media(pool.clone(), xdg_data.join(folder), folder_id, user_id).await;
   }
 
   info!("Scanning is done.");
+  Ok(())
 }
 
 #[derive(Debug, Default, Clone)]
@@ -194,36 +193,56 @@ pub async fn add_folders_to_db(pool: ConnectionPool, relative_paths: Vec<PathBuf
   folder_ids
 }
 
-pub async fn scan_folder_for_media(pool: ConnectionPool, absolute_path: PathBuf, folder_id: i32, user_id: i32) {
+pub async fn scan_folder_for_media(pool: ConnectionPool, absolute_path: PathBuf, folder_id: i32, user_id: i32) -> Result<(), ScanError> {
   let Some(parent_folder) = db::folders::select_folder(pool.get().await.unwrap(), folder_id).await else {
     warn!("Folder id {} not found in DB (user_id={})", folder_id, user_id);
-    return;
+    return Ok(());
   };
 
-  let Some(media_scanned_vec) = folder_get_media(absolute_path) else {
-    return;
-  };
+  let media_scanned_vec = folder_get_media(&absolute_path)
+    .map_err(ScanError::ReadDir)?;
 
-  if media_scanned_vec.is_empty() { return; }
+  if media_scanned_vec.is_empty() { return Ok(()); }
 
   for media_scanned in media_scanned_vec {
-    let name = media_scanned.file_name().unwrap().to_str().unwrap().to_owned();
+    let Some(name) = media_scanned.file_name().and_then(|n| n.to_str()).map(|s| s.to_owned()) else {
+      continue;
+    };
 
-    let media = db::media::check_if_media_present(pool.get().await.unwrap(), name.clone(), parent_folder.clone(), user_id)
-      .await;
+    let exists = db::media::check_if_media_present(pool.get().await.unwrap(), name.clone(), parent_folder.clone(), user_id)
+      .await
+      .is_some();
+    if exists { continue; };
 
-    if media.is_none() {
-      debug!("{:?} doesnt exist in database", media_scanned);
+    debug!("{:?} doesnt exist in database", media_scanned);
 
-      let Ok(image_dimensions) = imagesize::size(media_scanned.clone()) else {
-        warn!("Image {:?} was skipped as its dimensions are unknown.", media_scanned);
-        continue;
-      };
+    let Ok(image_dimensions) = imagesize::size(media_scanned.clone()) else {
+      warn!("Image {:?} was skipped as its dimensions are unknown.", media_scanned);
+      continue;
+    };
 
-      db::media::insert_media(pool.get().await.unwrap(), name, parent_folder.clone(), user_id,  (image_dimensions.width.try_into().unwrap(), image_dimensions.height.try_into().unwrap()), None, media_scanned)
-      .await;
-    }
+    let width: u32 = match image_dimensions.width.try_into() {
+      Ok(v) => v,
+      Err(_) => continue,
+    };
+    let height: u32 = match image_dimensions.height.try_into() {
+      Ok(v) => v,
+      Err(_) => continue,
+    };
+
+    db::media::insert_media(
+      pool.get().await.unwrap(),
+      name,
+      parent_folder.clone(),
+      user_id,
+      (width, height),
+      None,
+      media_scanned
+    )
+    .await;
   }
+
+  Ok(())
 }
 
 /// Selects parent folders.
@@ -245,16 +264,16 @@ pub async fn select_parent_folders(pool: ConnectionPool, mut current_folder: Fol
   Err(())
 }
 
-pub fn folder_get_media(dir: PathBuf) -> Option<Vec<PathBuf>> {
-  if !dir.exists() { return None; }
+pub fn folder_get_media(dir: &Path) -> Result<Vec<PathBuf>, io::Error> {
+  let read_dir = fs::read_dir(dir)?;
 
-  let data: Vec<PathBuf> = fs::read_dir(&dir).unwrap()
+  let data: Vec<PathBuf> = read_dir
     .into_iter()
-    .filter(|r| r.is_ok()) // Get rid of Err variants for Result<DirEntry>
-    .map(|r| r.unwrap().path()) // This is safe, since we only have the Ok variants
-    .filter(|r| r.is_file()) // Get rid of Err variants for Result<DirEntry>
+    .flatten() // Get rid of Err variants for Result<DirEntry>
+    .map(|r| r.path())
+    .filter(|r| r.is_file())
     .filter(|r| is_media_supported(r)) // Filter out non-folders
     .collect();
 
-  Some(data)
+  Ok(data)
 }
