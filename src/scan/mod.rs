@@ -125,7 +125,8 @@ pub async fn scan_root(pool: ConnectionPool, xdg_data: PathBuf, user_id: i32) ->
   let folder_ids = add_folders_to_db(pool.clone(), found_folders, user_id).await;
 
   for (folder, folder_id) in folder_ids.into_iter() {
-    let _ = scan_folder_for_media(pool.clone(), xdg_data.join(folder), folder_id, user_id).await;
+    let abs = xdg_data.join(folder);
+    let _ = scan_folder_for_media(pool.clone(), &abs, folder_id, user_id).await;
   }
 
   info!("Scanning is done.");
@@ -194,7 +195,7 @@ pub async fn add_folders_to_db(pool: ConnectionPool, relative_paths: Vec<PathBuf
   folder_ids
 }
 
-pub async fn scan_folder_for_media(pool: ConnectionPool, absolute_path: PathBuf, folder_id: i32, user_id: i32) -> Result<(), ScanError> {
+pub async fn scan_folder_for_media(pool: ConnectionPool, absolute_path: &Path, folder_id: i32, user_id: i32) -> Result<(), ScanError> {
   let Some(parent_folder) = db::folders::select_folder(pool.get().await.unwrap(), folder_id).await else {
     warn!("Folder id {} not found in DB (user_id={})", folder_id, user_id);
     return Ok(());
