@@ -17,6 +17,7 @@ use axum_extra::routing::RouterExt;
 use dashmap::DashMap;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
 use openapi::ApiDoc;
+use routes::oidc::AuthPolicyPublic;
 use tracing::{error, info, warn};
 use utoipa_swagger_ui::{Config, SwaggerUi};
 use crate::auth::secret::Secret;
@@ -79,7 +80,8 @@ pub struct OidcProviderConfig {
 #[derive(Clone)]
 pub struct AppState {
   pub pool: ConnectionPool,
-  pub oidc: OidcState
+  pub oidc: OidcState,
+  pub auth_policy: AuthPolicyPublic
 }
 
 #[derive(Clone)]
@@ -142,9 +144,18 @@ async fn run() -> Result<(), anyhow::Error> {
     .map_err(|e| anyhow::anyhow!("Can't run migrations (interact join error): {e}"))?
     .map_err(|e| anyhow::anyhow!("Can't run migrations: {e}"))?;
 
+  let disable_local_signups = std::env::var("DISABLE_LOCAL_SIGNUPS")
+    .map(|v| matches!(v.to_lowercase().as_str(), "true" | "1"))
+    .unwrap_or(true);
+  let disable_local_auth = std::env::var("DISABLE_LOCAL_AUTH")
+    .map(|v| matches!(v.to_lowercase().as_str(), "true" | "1"))
+    .unwrap_or(false);
+  let auth_policy = AuthPolicyPublic { disable_local_signups, disable_local_auth };
+
   let state = AppState {
     pool: pool.clone(),
-    oidc: oidc().await
+    oidc: oidc().await,
+    auth_policy
   };
 
   let protected = Router::new()

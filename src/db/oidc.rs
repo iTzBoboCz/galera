@@ -56,3 +56,25 @@ pub async fn insert_oidc_user(conn: DbConn, oidc_provider: String, oidc_subject:
   .await
   .map_err(|_| diesel::result::Error::RollbackTransaction)?
 }
+
+/// Links an existing local user to an OIDC identity (provider + subject).
+/// Insert runs in a single transaction.
+pub async fn insert_oidc_identity_link(conn: DbConn, user_id: i32, oidc_provider: String, oidc_subject: String) -> Result<(), diesel::result::Error> {
+  conn.interact(move |c| {
+    c.transaction::<(), diesel::result::Error, _>(|c| {
+      let oidc = NewOidcIdentity {
+        provider_key: oidc_provider,
+        subject: oidc_subject,
+        user_id,
+      };
+
+      diesel::insert_into(oidc_identity::table)
+        .values(oidc)
+        .execute(c)?;
+
+      Ok(())
+    })
+  })
+  .await
+  .map_err(|_| diesel::result::Error::RollbackTransaction)?
+}

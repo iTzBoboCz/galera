@@ -7,6 +7,7 @@ use diesel::OptionalExtension;
 use diesel::QueryDsl;
 use diesel::RunQueryDsl;
 use diesel::Table;
+use tracing::error;
 
 /// Inserts a new user.
 /// # Example
@@ -103,17 +104,26 @@ pub async fn get_user_by_id(conn: DbConn, user_id: i32) -> Option<User> {
   }).await.unwrap()
 }
 
-#[allow(dead_code)]
-/// Tries to select a user ID from a given email.
-pub async fn get_user_id_email(conn: DbConn, email: String) -> Option<i32> {
-  conn.interact(move |c| {
-    user::table
-      .select(user::id)
-      .filter(user::email.eq(email))
-      .first(c)
-      .optional()
-      .unwrap()
-  }).await.unwrap()
+/// Tries to select a user from a given email.
+pub async fn get_user_by_email(conn: DbConn, email: String) -> Result<Option<User>, diesel::result::Error> {
+  let result = conn
+    .interact(move |c| {
+      user::table
+        .select(user::table::all_columns())
+        .filter(user::email.eq(email))
+        .first::<User>(c)
+        .optional()
+    })
+    .await
+    .map_err(|e| {
+      error!("DB interact failed in get_user_by_email: {e}");
+      diesel::result::Error::DatabaseError(
+        diesel::result::DatabaseErrorKind::Unknown,
+        Box::new(format!("interact failed: {e}")),
+      )
+    })??;
+
+  Ok(result)
 }
 
 /// Checks the database for a combination of a specified username and password.

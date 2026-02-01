@@ -49,14 +49,19 @@ pub struct UserRoute;
     (status = 400, description = "Invalid JSON or wrong shape"),
     (status = 409, description = "User already exists"),
     (status = 422, description = "Invalid user data"),
-    (status = 500, description = "Internal server error")
+    (status = 500, description = "Internal server error"),
+    (status = 503, description = "Either local auth or signups are disabled")
   )
 )]
 pub async fn create_user(
   _: UserRoute,
-  State(AppState { pool,.. }): State<AppState>,
+  State(AppState { pool, auth_policy,..  }): State<AppState>,
   Json(user): Json<NewUser>,
 ) -> Result<StatusCode, StatusCode> {
+  if auth_policy.disable_local_auth || auth_policy.disable_local_signups {
+    return Err(StatusCode::SERVICE_UNAVAILABLE);
+  }
+
   if !user.check() { return Err(StatusCode::UNPROCESSABLE_ENTITY) }
 
   // TODO: investigate passing pool vs connection as parameter
@@ -84,14 +89,19 @@ pub struct LoginRoute;
     (status = 200, description = "Login successful", body = LoginResponse),
     (status = 400, description = "Invalid JSON or wrong shape"),
     (status = 409, description = "Invalid credentials or user conflict"),
-    (status = 500, description = "Internal server error")
+    (status = 500, description = "Internal server error"),
+    (status = 503, description = "Local auth is disabled")
   )
 )]
 pub async fn login(
   _: LoginRoute,
-  State(AppState { pool,.. }): State<AppState>,
+  State(AppState { pool, auth_policy,.. }): State<AppState>,
   Json(user_login): Json<UserLogin>,
 ) -> Result<Json<LoginResponse>, StatusCode> {
+  if auth_policy.disable_local_auth {
+    return Err(StatusCode::SERVICE_UNAVAILABLE);
+  }
+
   let Some(token) = user_login.hash_password().login(pool.clone()).await else {
     return Err(StatusCode::CONFLICT);
   };

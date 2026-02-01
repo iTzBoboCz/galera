@@ -206,6 +206,50 @@ pub async fn oidc_callback(
     }
   }
 
+  // 5b) If enabled, try to link an existing LOCAL user by email
+  let oidc_link_existing_by_email = std::env::var("OIDC_LINK_EXISTING_BY_EMAIL")
+    .map(|v| matches!(v.to_lowercase().as_str(), "true" | "1"))
+    .unwrap_or(false);
+
+  if oidc_link_existing_by_email {
+    // Look up local user by email
+    match db::users::get_user_by_email(state.pool.get().await.unwrap(), email.clone()).await {
+      Ok(Some(existing)) => {
+        let email_trusted = claims.email_verified().unwrap_or(false);
+
+        if !email_trusted {
+          warn!(
+            "Refusing to link OIDC identity to existing user by email because email_verified is false for email={:?} (provider={})",
+            email, provider
+          );
+          return (StatusCode::UNAUTHORIZED, "Email not verified").into_response();
+        }
+
+        // Link identity: (provider, sub) -> existing user id
+        match db::oidc::insert_oidc_identity_link(
+          state.pool.get().await.unwrap(),
+          existing.id,
+          provider.clone(),
+          sub.clone(),
+        ).await {
+          Ok(()) => {
+            return issue_login_response(state.pool, Claims::new(existing.id)).await.into_response();
+          }
+          Err(e) => {
+            error!("DB error inserting oidc identity link: {e}");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+          }
+        }
+      }
+      // no existing user by email -> continue to signup gate
+      Ok(None) => {}
+      Err(e) => {
+        error!("DB error selecting user by email: {e}");
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+      }
+    }
+  }
+
   // 6) Not found → signup gate
   if !prov.config.allow_signup {
     return (StatusCode::UNAUTHORIZED, "Signups disabled").into_response();
@@ -229,6 +273,7 @@ pub struct ServerConfigResponse {
 #[derive(Serialize, Deserialize, ToSchema)]
 pub struct AuthConfig {
     pub oidc: Vec<OidcProviderPublic>,
+    pub policy: AuthPolicyPublic
 }
 
 #[derive(Serialize, Deserialize, ToSchema)]
@@ -236,6 +281,12 @@ pub struct OidcProviderPublic {
     pub key: String,
     pub display_name: String,
     pub login_url: String,
+}
+
+#[derive(Clone, Serialize, Deserialize, ToSchema)]
+pub struct AuthPolicyPublic {
+  pub disable_local_signups: bool,
+  pub disable_local_auth: bool,
 }
 
 #[derive(TypedPath)]
@@ -279,6 +330,6 @@ pub async fn get_server_config(
   };
 
   Json(ServerConfigResponse {
-    auth: AuthConfig { oidc },
+    auth: AuthConfig { oidc, policy: state.auth_policy },
   })
 }
