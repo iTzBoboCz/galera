@@ -30,7 +30,7 @@ utoipa-swagger-ui = { version = "9.0.2", features = ["axum"] }
 
 # Validation
 email_address = "0.2.9"
-lazy-regex = "3.5.1"
+lazy-regex = "3.6.0"
 
 # Media
 infer = "0.19.0"
