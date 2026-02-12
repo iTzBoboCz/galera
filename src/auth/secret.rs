@@ -1,4 +1,4 @@
-use rand::{Rng, distr::Alphanumeric, rng};
+use rand::{RngExt, distr::Alphanumeric, rng};
 use std::fs;
 
 pub struct Secret {
