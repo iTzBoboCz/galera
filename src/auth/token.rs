@@ -50,12 +50,14 @@ pub struct Claims {
 /// let decoded_token = encoded_token.decode();
 /// ```
 #[derive(Serialize, Deserialize, Clone, ToSchema)]
-pub struct ClaimsEncoded(pub String);
+pub struct ClaimsEncoded {
+  pub encoded_claims: String,
+}
 
 impl ClaimsEncoded {
   /// Returns the encoded token.
   pub fn encoded_claims(&self) -> String {
-    self.0.clone()
+    self.encoded_claims.clone()
   }
 
   /// Decodes a bearer token.
@@ -77,7 +79,7 @@ impl ClaimsEncoded {
     v.set_audience(&["urn:galera:api"]);
     v.validate_exp = false;
 
-    Ok(jsonwebtoken::decode::<Claims>(self.0.as_str(), &DecodingKey::from_secret(secret.as_ref()),
+    Ok(jsonwebtoken::decode::<Claims>(self.encoded_claims.as_str(), &DecodingKey::from_secret(secret.as_ref()),
     &v)?)
   }
 }
@@ -94,7 +96,7 @@ impl TryFrom<&str> for Claims {
   /// let result = Claims::try_from(my_bearer_string)?;
   /// ```
   fn try_from(token: &str) -> Result<Claims, Self::Error> {
-    let encoded = ClaimsEncoded(token.to_owned());
+    let encoded = ClaimsEncoded { encoded_claims: token.to_owned() };
 
     Ok(encoded.decode()?.claims)
   }
@@ -146,7 +148,7 @@ impl Claims {
         let context = format!("Encoding went wrong. {}.", err);
         return Err(anyhow::Error::new( err).context(context));
     }
-    Ok(ClaimsEncoded(encoded_claims.unwrap()))
+    Ok(ClaimsEncoded { encoded_claims: encoded_claims.unwrap() })
   }
 
   /// Generates a new bearer token.
