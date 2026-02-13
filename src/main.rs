@@ -20,6 +20,7 @@ use openapi::ApiDoc;
 use routes::oidc::AuthPolicyPublic;
 use tracing::{error, info, warn};
 use utoipa_swagger_ui::{Config, SwaggerUi};
+use uuid::Uuid;
 use crate::auth::secret::Secret;
 use crate::directories::Directories;
 use axum::{response::{Html, IntoResponse}, routing::get, Router, http::Request, middleware::{Next, self}, extract::{MatchedPath}, body::Body};
@@ -27,7 +28,7 @@ use deadpool_diesel::{Pool, Runtime, Manager};
 use diesel::{MysqlConnection};
 use diesel_migrations::MigrationHarness;
 use metrics_exporter_prometheus::{Matcher, PrometheusBuilder, PrometheusHandle};
-use std::{future::ready, net::SocketAddr, process::ExitCode, sync::Arc, time::Instant};
+use std::{fs, future::ready, net::SocketAddr, process::ExitCode, sync::Arc, time::Instant};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use tower_http::trace::TraceLayer;
 use openidconnect::reqwest;
@@ -127,6 +128,11 @@ async fn run() -> Result<(), anyhow::Error> {
 
   check_secret_startup().map_err(|e| {
     error!("Secret couldn't be read and/or created: {e}");
+    e
+  })?;
+
+  instance_uuid().map_err(|e| {
+    error!("Instance uuid couldn't be read and/or created: {e}");
     e
   })?;
 
@@ -338,4 +344,26 @@ pub async fn oidc() -> OidcState {
       http_client,
     }
   )
+}
+
+pub fn instance_uuid() -> Result<String, std::io::Error> {
+  let data = Directories::get().data();
+  let instance_uuid_file = data.join(".instance_uuid");
+
+  match fs::read_to_string(&instance_uuid_file) {
+    Ok(s) => {
+      let s = s.trim().to_string();
+      if !s.is_empty() {
+        return Ok(s);
+      }
+      // empty file -> treat as missing and re-generate below
+    }
+    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+    Err(e) => return Err(e),
+  }
+
+  let uuid = Uuid::new_v4().to_string();
+  fs::write(&instance_uuid_file, uuid.clone())?;
+
+  Ok(uuid)
 }

@@ -5,7 +5,7 @@ use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, TokenData, Valid
 use tracing::error;
 use uuid::Uuid;
 use utoipa::ToSchema;
-use crate::{AppState, ConnectionPool, db::{self, tokens::{insert_access_token, insert_refresh_token, insert_session_tokens, select_refresh_token_expiration}, users}};
+use crate::{AppState, ConnectionPool, db::{self, tokens::{insert_access_token, insert_refresh_token, insert_session_tokens, select_refresh_token_expiration}, users}, instance_uuid};
 use crate::DbConn;
 use crate::auth::secret::Secret;
 use anyhow::{self, Context};
@@ -164,7 +164,7 @@ impl Claims {
     let expiraton_time = 900;
 
     Claims {
-      iss: format!("urn:galera:instance:{}", "test"),
+      iss: format!("urn:galera:instance:{}", instance_uuid().unwrap()),
       sub,
       aud: "urn:galera:api".into(),
       exp: current_time + expiraton_time,
