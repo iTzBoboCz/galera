@@ -8,6 +8,7 @@ use nanoid::nanoid;
 use serde::{Serialize, Deserialize};
 use sha2::Digest;
 use utoipa::ToSchema;
+use uuid::Uuid;
 
 #[allow(non_camel_case_types)]
 #[derive(Identifiable, Queryable)]
@@ -17,6 +18,7 @@ pub struct User {
   pub username: String,
   pub email: String,
   pub password: Option<String>,
+  pub uuid: String,
 }
 
 /// Struct for inserting new users.
@@ -27,15 +29,16 @@ pub struct NewUser {
   pub username: String,
   pub email: String,
   pub password: Option<String>,
+  pub uuid: String,
 }
 
 impl NewUser {
   pub fn new(username: String, email: String, password: Option<String>) -> NewUser {
-    NewUser { username, email, password }
+    NewUser { username, email, password, uuid: Uuid::new_v4().to_string() }
   }
 
   pub fn new_oidc(oidc_provider: String, oidc_subject: String, email: String) -> NewUser {
-    NewUser { username: format!("oidc-{}-{}", oidc_provider, oidc_subject).to_lowercase().to_owned(), email, password: None }
+    NewUser { username: format!("oidc-{}-{}", oidc_provider, oidc_subject).to_lowercase().to_owned(), email, password: None, uuid: Uuid::new_v4().to_string() }
   }
 
   /// Encrypts the password.

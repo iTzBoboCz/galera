@@ -12,29 +12,33 @@ use anyhow::{self, Context};
 use axum::{http::{StatusCode,Request}, extract::State, response::Response, middleware::Next, body::Body};
 use axum_extra::{TypedHeader, headers::{Authorization, authorization}};
 
-/// Bearer token\
-/// used as a Request guard
-/// # Example
-/// Only authenticated users will be able to access data on this endpoint.
-/// ```
-/// #[get("/data")]
-/// pub async fn get_data(claims: Claims, conn: DbConn) -> Json<Vec<Data>> {
-///   Json(db::request_data(&conn).await)
-/// }
-/// ```
-/// for more information, see [Rocket documentation](https://rocket.rs/v0.5-rc/guide/requests/#request-guards).
+#[derive(Debug, Serialize, Deserialize)]
+enum Roles {
+  Admin,
+  User
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
+  /// Issuer
+  iss: String,
+  /// Subject - UUID of a user
+  pub sub: String,
+  /// Audience
+  aud: String,
   /// expiration time
   exp: i64,
+  /// not before
+  nbf: i64,
   /// issued at
   iat: i64,
-  /// ID of a user
+  /// JWT ID
+  jti: String,
+  /// ID of a user (temporarily for compatibility, will be removed soon)
   pub user_id: i32,
   /// Refresh token - used to refresh access token
   refresh_token: String,
-  /// Access token - used to access data
-  access_token: String,
+  roles: Vec<Roles>
 }
 
 /// Encoded bearer token
@@ -46,21 +50,22 @@ pub struct Claims {
 /// let decoded_token = encoded_token.decode();
 /// ```
 #[derive(Serialize, Deserialize, Clone, ToSchema)]
-pub struct ClaimsEncoded {
-  pub encoded_claims: String,
-}
+pub struct ClaimsEncoded(pub String);
 
 impl ClaimsEncoded {
   /// Returns the encoded token.
   pub fn encoded_claims(&self) -> String {
-    self.encoded_claims.clone()
+    self.0.clone()
   }
 
   /// Decodes a bearer token.
   pub fn decode(self) -> Result<TokenData<Claims>, jsonwebtoken::errors::Error> {
     let secret = Secret::read().context("Secret couldn't be read.").unwrap();
 
-    let decoded = jsonwebtoken::decode::<Claims>(self.encoded_claims.as_str(), &DecodingKey::from_secret(secret.as_ref()), &Validation::new(Algorithm::HS512));
+    let mut v = Validation::new(Algorithm::HS512);
+    v.set_audience(&["urn:galera:api"]);
+
+    let decoded = jsonwebtoken::decode::<Claims>(self.encoded_claims.as_str(), &DecodingKey::from_secret(secret.as_ref()), &v);
 
     Ok(decoded?)
   }
@@ -69,9 +74,10 @@ impl ClaimsEncoded {
     let secret = Secret::read().context("Secret couldn't be read.").unwrap();
 
     let mut v = Validation::new(Algorithm::HS512);
+    v.set_audience(&["urn:galera:api"]);
     v.validate_exp = false;
 
-    Ok(jsonwebtoken::decode::<Claims>(self.encoded_claims.as_str(), &DecodingKey::from_secret(secret.as_ref()),
+    Ok(jsonwebtoken::decode::<Claims>(self.0.as_str(), &DecodingKey::from_secret(secret.as_ref()),
     &v)?)
   }
 }
@@ -88,9 +94,7 @@ impl TryFrom<&str> for Claims {
   /// let result = Claims::try_from(my_bearer_string)?;
   /// ```
   fn try_from(token: &str) -> Result<Claims, Self::Error> {
-    let encoded = ClaimsEncoded {
-      encoded_claims: token.to_owned(),
-    };
+    let encoded = ClaimsEncoded(token.to_owned());
 
     Ok(encoded.decode()?.claims)
   }
@@ -142,7 +146,7 @@ impl Claims {
         let context = format!("Encoding went wrong. {}.", err);
         return Err(anyhow::Error::new( err).context(context));
     }
-    Ok(ClaimsEncoded { encoded_claims: encoded_claims.unwrap() })
+    Ok(ClaimsEncoded(encoded_claims.unwrap()))
   }
 
   /// Generates a new bearer token.
@@ -151,18 +155,23 @@ impl Claims {
   /// ```
   /// let new_bearer_token = Claims::new(1);
   /// ```
-  pub fn new(user_id: i32) -> Claims {
+  pub fn new(user_id: i32, sub: String) -> Claims {
     let current_time = Utc::now().timestamp();
 
     // 15 mins in seconds
     let expiraton_time = 900;
 
     Claims {
+      iss: format!("urn:galera:instance:{}", "test"),
+      sub,
+      aud: "urn:galera:api".into(),
       exp: current_time + expiraton_time,
+      nbf: current_time,
       iat: current_time,
+      jti: Claims::generate_random_string(),
       user_id,
       refresh_token: Claims::generate_random_string(),
-      access_token: Claims::generate_random_string()
+      roles: vec![Roles::User]
     }
   }
 
@@ -176,7 +185,7 @@ impl Claims {
   /// ```
 
   pub fn from_existing(token: &Claims) -> Claims {
-    let mut new_token = Claims::new(token.user_id);
+    let mut new_token = Claims::new(token.user_id, token.sub.clone());
     new_token.refresh_token = token.refresh_token.clone();
 
     new_token
@@ -189,7 +198,7 @@ impl Claims {
 
   /// Returns the access token.
   pub fn access_token(&self) -> String {
-    self.access_token.clone()
+    self.jti.clone()
   }
 
   pub async fn add_session_tokens_to_db(&self, pool: ConnectionPool) -> Result<(i32, i32), diesel::result::Error> {

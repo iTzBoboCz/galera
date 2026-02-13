@@ -126,26 +126,28 @@ pub async fn get_user_by_email(conn: DbConn, email: String) -> Result<Option<Use
   Ok(result)
 }
 
-/// Checks the database for a combination of a specified username and password.
-pub async fn check_user_login_username(conn: DbConn, username: String, password: String) -> Option<i32> {
-  conn.interact(move |c| {
-    user::table
-      .select(user::id)
-      .filter(user::username.eq(username).and(user::password.eq(password)))
-      .first(c)
-      .optional()
-      .unwrap()
-  }).await.unwrap()
-}
+/// Checks the database for a combination of a specified username_or_email and password.
+// TODO: switch to only using UUID later
+pub async fn check_user_login(conn: DbConn, username_or_email: String, password: String) -> Result<Option<User>, diesel::result::Error> {
+  let result = conn
+    .interact(move |c| {
+      user::table
+        .select(user::table::all_columns())
+        .filter(
+          (user::username.eq(&username_or_email).or(user::email.eq(&username_or_email)))
+            .and(user::password.eq(password))
+        )
+        .first::<User>(c)
+        .optional()
+    })
+    .await
+    .map_err(|e| {
+      error!("DB interact failed in check_user_login: {e}");
+      diesel::result::Error::DatabaseError(
+        diesel::result::DatabaseErrorKind::Unknown,
+        Box::new(format!("interact failed: {e}")),
+      )
+    })??;
 
-/// Checks the database for a combination of a specified email and password.
-pub async fn check_user_login_email(conn: DbConn, email: String, password: String) -> Option<i32> {
-  conn.interact(move |c| {
-    user::table
-      .select(user::id)
-      .filter(user::email.eq(email).and(user::password.eq(password)))
-      .first(c)
-      .optional()
-      .unwrap()
-  }).await.unwrap()
+  Ok(result)
 }

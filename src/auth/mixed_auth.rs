@@ -41,7 +41,7 @@ impl FromRequestParts<AppState> for AuthHeader {
         if let Ok(TypedHeader(Authorization(b))) =
             TypedHeader::<Authorization<authorization::Bearer>>::from_request_parts(parts, _state).await
         {
-            return Ok(AuthHeader::Bearer(Arc::new(ClaimsEncoded { encoded_claims: b.token().to_string()  }.decode().map_err(|_| StatusCode::UNAUTHORIZED)? .claims)));
+            return Ok(AuthHeader::Bearer(Arc::new(ClaimsEncoded(b.token().to_string()).decode().map_err(|_| StatusCode::UNAUTHORIZED)? .claims)));
         }
 
         // try Basic

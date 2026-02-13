@@ -2,6 +2,8 @@ use std::time::Instant;
 use crate::auth::token::Claims;
 use crate::auth::login::LoginResponse;
 use crate::db::oidc::insert_oidc_user;
+use crate::db::users::get_user_by_id;
+use crate::models::User;
 use crate::openapi::tags::{AUTH, AUTH_PUBLIC, OIDC, OTHER};
 use crate::routes::issue_login_response;
 use axum::extract::{Query, State};
@@ -192,8 +194,12 @@ pub async fn oidc_callback(
 
   // 5) Find existing identity by (provider, sub)
   match db::oidc::get_user_by_oidc_subject(state.pool.get().await.unwrap(), provider.clone(), sub.clone()).await {
-    Ok(Some(user)) => {
-      let claims = Claims::new(user.id);
+    Ok(Some(oidc_identity)) => {
+      let Some(user) = get_user_by_id(state.pool.get().await.unwrap(), oidc_identity.user_id).await else {
+        error!("DB error selecting user by user_id after succesful oidc_identity select");
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+      };
+      let claims = Claims::new(user.id, user.uuid);
       return issue_login_response(state.pool, claims).await.into_response();
     }
 
@@ -233,7 +239,7 @@ pub async fn oidc_callback(
           sub.clone(),
         ).await {
           Ok(()) => {
-            return issue_login_response(state.pool, Claims::new(existing.id)).await.into_response();
+            return issue_login_response(state.pool, Claims::new(existing.id, existing.uuid)).await.into_response();
           }
           Err(e) => {
             error!("DB error inserting oidc identity link: {e}");
@@ -257,12 +263,17 @@ pub async fn oidc_callback(
 
   // 7) Create new local user (OIDC-only) + link identity
   let Ok(user_id) = insert_oidc_user(state.pool.get().await.unwrap(), provider.clone(), sub.clone(), email).await else {
-    debug!("Created a new OIDC-only user: {} - {}", provider, sub);
+    debug!("Created a new OIDC-only user - IdP provider: {}, IdP sub: {}", provider, sub);
     return (StatusCode::INTERNAL_SERVER_ERROR, "Can't create new oidc-only user").into_response();
   };
 
+  let Some(User { uuid,.. }) = get_user_by_id(state.pool.get().await.unwrap(), user_id).await else {
+    error!("DB error selecting user by user_id");
+    return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+  };
+
   // 8) Issue normal JWT login response
-  issue_login_response(state.pool, Claims::new(user_id)).await.into_response()
+  issue_login_response(state.pool, Claims::new(user_id, uuid)).await.into_response()
 }
 
 #[derive(Serialize, Deserialize, ToSchema)]

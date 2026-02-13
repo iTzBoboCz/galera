@@ -111,7 +111,7 @@ pub async fn login(
 
 
 async fn issue_login_response(pool: ConnectionPool, token: Claims) -> Result<Json<LoginResponse>, StatusCode> {
-  let Some(user_info) = get_user_by_id(pool.get().await.unwrap(), token.user_id).await else {
+  let Some(user) = get_user_by_id(pool.get().await.unwrap(), token.user_id).await else {
     return Err(StatusCode::INTERNAL_SERVER_ERROR);
   };
 
@@ -123,7 +123,7 @@ async fn issue_login_response(pool: ConnectionPool, token: Claims) -> Result<Jso
     Json(
       LoginResponse::new(
         encoded,
-        UserInfo::from(user_info)
+        UserInfo::from(user)
       )
     )
   )

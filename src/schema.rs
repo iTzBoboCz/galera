@@ -128,6 +128,8 @@ diesel::table! {
     email -> Varchar,
     #[max_length = 128]
     password -> Nullable<Varchar>,
+    #[max_length = 36]
+    uuid -> Varchar,
   }
 }
 

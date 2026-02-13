@@ -1,4 +1,4 @@
-use crate::{db::users::{check_user_login_email, check_user_login_username}, models::User, ConnectionPool};
+use crate::{ConnectionPool, db::users::check_user_login, models::User};
 use serde::{Serialize, Deserialize};
 use sha2::Digest;
 use utoipa::ToSchema;
@@ -13,25 +13,13 @@ pub struct UserLogin {
 }
 
 impl UserLogin {
-  /// Checks whether the `username_or_email` field is an email or not.
-  fn is_email(&self) -> bool {
-    self.username_or_email.contains('@')
-  }
-
-  /// Checks the credentials.
-  async fn check(&self, pool: ConnectionPool) -> Option<i32> {
-    if self.is_email() {
-      return check_user_login_email(pool.get().await.unwrap(), self.username_or_email.clone(), self.password.clone()).await;
-    } else {
-      return check_user_login_username(pool.get().await.unwrap(), self.username_or_email.clone(), self.password.clone()).await;
-    }
-  }
-
   /// Tries to log the user in.
   pub async fn login(&self, pool: ConnectionPool) -> Option<Claims> {
-    let user_id = self.check(pool.clone()).await?;
+    let Ok(Some(User { id, uuid,.. })) = check_user_login(pool.get().await.unwrap(), self.username_or_email.clone(), self.password.clone()).await else {
+      return None;
+    };
 
-    let token = Claims::new(user_id);
+    let token = Claims::new(id, uuid);
 
     // add refresh and access tokens to db
     token.add_session_tokens_to_db(pool).await.ok()?;
