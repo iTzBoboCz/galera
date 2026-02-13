@@ -194,6 +194,7 @@ async fn run() -> Result<(), anyhow::Error> {
     .typed_get(routes::oidc::oidc_callback)
     .typed_post(routes::create_user)
     .typed_post(routes::login)
+    .typed_post(routes::logout)
     .typed_post(routes::refresh_token)
     .typed_get(routes::albums::get_album_share_link)
     .typed_get(routes::system_info_public);

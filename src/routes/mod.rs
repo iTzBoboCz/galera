@@ -1,7 +1,8 @@
 use std::sync::Arc;
 use crate::auth::login::{UserLogin, UserInfo, LoginResponse};
 use crate::auth::token::{Claims, ClaimsEncoded};
-use crate::cookies::{build_refresh_cookie, read_refresh_token};
+use crate::cookies::{build_refresh_cookie, clear_refresh_cookie, read_refresh_token};
+use crate::db::tokens::delete_session_by_refresh_token;
 use crate::db::{self, users::get_user_by_id};
 use crate::directories::Directories;
 use crate::models::NewUser;
@@ -12,7 +13,7 @@ use axum::http::HeaderMap;
 use axum::{Json, http::StatusCode};
 use axum_extra::extract::CookieJar;
 use axum_extra::routing::TypedPath;
-use tracing::{info};
+use tracing::{info, warn};
 use utoipa::ToSchema;
 use uuid::Uuid;
 use crate::{AppState, ConnectionPool, scan};
@@ -138,6 +139,36 @@ async fn issue_login_response(pool: ConnectionPool, token: Claims, jar: CookieJa
       )
     )
   )
+}
+
+#[derive(TypedPath)]
+#[typed_path("/auth/logout")]
+pub struct LogoutRoute;
+
+/// Invalidates the session.
+#[utoipa::path(
+  post,
+  path = "/auth/logout",
+  tags = [ AUTH, AUTH_PUBLIC ],
+  responses(
+    (status = 204, description = "Logout succesful"),
+  )
+)]
+pub async fn logout(
+  _: LogoutRoute,
+  State(AppState { pool,.. }): State<AppState>,
+  headers: HeaderMap,
+  jar: CookieJar,
+) -> (CookieJar, StatusCode) {
+  if let Some(refresh_token) = read_refresh_token(&jar) {
+    match delete_session_by_refresh_token(pool.get().await.unwrap(), refresh_token).await {
+      Ok(true) => {} // deleted
+      Ok(false) => tracing::debug!("logout: no session found"),
+      Err(e) => tracing::warn!("logout: failed to invalidate session: {e}"),
+    }
+  }
+
+  (jar.add(clear_refresh_cookie(&headers)), StatusCode::NO_CONTENT)
 }
 
 #[derive(TypedPath)]

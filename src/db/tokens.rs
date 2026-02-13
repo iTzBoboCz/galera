@@ -110,3 +110,40 @@ pub async fn insert_session_tokens(conn: DbConn, user_id: i32, refresh_token: St
   }).await
   .map_err(|_| diesel::result::Error::RollbackTransaction)?
 }
+
+
+pub async fn delete_session_by_refresh_token(
+  conn: DbConn,
+  refresh_token: String,
+) -> Result<bool, diesel::result::Error> {
+  conn
+    .interact(move |c| {
+      c.transaction::<bool, diesel::result::Error, _>(|c| {
+        let refresh_token_id = auth_refresh_token::table
+          .select(auth_refresh_token::id)
+          .filter(auth_refresh_token::refresh_token.eq(&refresh_token))
+          .first::<i32>(c)
+          .optional()?;
+
+        let Some(refresh_token_id) = refresh_token_id else {
+          return Ok(false);
+        };
+
+        // Delete all access tokens under this refresh token
+        diesel::delete(
+          auth_access_token::table.filter(auth_access_token::refresh_token_id.eq(refresh_token_id)),
+        )
+        .execute(c)?;
+
+        // Delete the refresh token itself
+        diesel::delete(
+          auth_refresh_token::table.filter(auth_refresh_token::id.eq(refresh_token_id)),
+        )
+        .execute(c)?;
+
+        Ok(true)
+      })
+    })
+    .await
+    .map_err(|_| diesel::result::Error::RollbackTransaction)?
+}

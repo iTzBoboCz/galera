@@ -42,6 +42,7 @@ pub mod tags {
     crate::routes::health,
     crate::routes::create_user,
     crate::routes::login,
+    crate::routes::logout,
     crate::routes::refresh_token,
     crate::routes::system_info_public,
     crate::routes::oidc::get_server_config,

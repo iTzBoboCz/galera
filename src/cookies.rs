@@ -38,6 +38,18 @@ pub fn build_refresh_cookie(refresh_token: String, headers: &HeaderMap) -> Cooki
   c
 }
 
+pub fn clear_refresh_cookie(headers: &HeaderMap) -> Cookie<'static> {
+  let mut c = Cookie::new(REFRESH_COOKIE, "");
+
+  c.set_http_only(true);
+  c.set_secure(is_https(headers));
+  c.set_same_site(SameSite::Lax);
+  c.set_path("/auth/");
+  c.set_max_age(Duration::seconds(0));
+
+  c
+}
+
 pub fn read_refresh_token(jar: &CookieJar) -> Option<String> {
   jar.get(REFRESH_COOKIE).map(|c| c.value().to_string())
 }
