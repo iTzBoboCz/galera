@@ -1,16 +1,20 @@
 use std::sync::Arc;
 use crate::auth::login::{UserLogin, UserInfo, LoginResponse};
 use crate::auth::token::{Claims, ClaimsEncoded};
+use crate::cookies::{build_refresh_cookie, read_refresh_token};
 use crate::db::{self, users::get_user_by_id};
 use crate::directories::Directories;
 use crate::models::NewUser;
 use crate::openapi::tags::{AUTH, AUTH_PROTECTED, AUTH_PUBLIC, OTHER};
 use axum::Extension;
 use axum::extract::State;
+use axum::http::HeaderMap;
 use axum::{Json, http::StatusCode};
+use axum_extra::extract::CookieJar;
 use axum_extra::routing::TypedPath;
 use tracing::{info};
 use utoipa::ToSchema;
+use uuid::Uuid;
 use crate::{AppState, ConnectionPool, scan};
 use serde::{Deserialize, Serialize};
 
@@ -96,21 +100,25 @@ pub struct LoginRoute;
 pub async fn login(
   _: LoginRoute,
   State(AppState { pool, auth_policy,.. }): State<AppState>,
+  jar: CookieJar,
+  headers: HeaderMap,
   Json(user_login): Json<UserLogin>,
-) -> Result<Json<LoginResponse>, StatusCode> {
+) -> Result<(CookieJar, Json<LoginResponse>), StatusCode> {
   if auth_policy.disable_local_auth {
     return Err(StatusCode::SERVICE_UNAVAILABLE);
   }
 
-  let Some(token) = user_login.hash_password().login(pool.clone()).await else {
+  let refresh_token = Uuid::new_v4().to_string();
+  let Some(token) = user_login.hash_password().login(pool.clone(), refresh_token.clone()).await else {
     return Err(StatusCode::CONFLICT);
   };
 
-  issue_login_response(pool, token).await
+  let jar = jar.add(build_refresh_cookie(refresh_token, &headers));
+
+  issue_login_response(pool, token, jar).await
 }
 
-
-async fn issue_login_response(pool: ConnectionPool, token: Claims) -> Result<Json<LoginResponse>, StatusCode> {
+async fn issue_login_response(pool: ConnectionPool, token: Claims, jar: CookieJar) -> Result<(CookieJar, Json<LoginResponse>), StatusCode> {
   let Some(user) = get_user_by_id(pool.get().await.unwrap(), token.user_id).await else {
     return Err(StatusCode::INTERNAL_SERVER_ERROR);
   };
@@ -120,10 +128,13 @@ async fn issue_login_response(pool: ConnectionPool, token: Claims) -> Result<Jso
   };
 
   Ok(
-    Json(
-      LoginResponse::new(
-        encoded,
-        UserInfo::from(user)
+    (
+      jar,
+      Json(
+        LoginResponse::new(
+          encoded,
+          UserInfo::from(user)
+        )
       )
     )
   )
@@ -151,8 +162,12 @@ pub struct LoginRefreshRoute;
 pub async fn refresh_token(
   _: LoginRefreshRoute,
   State(AppState { pool,.. }): State<AppState>,
+  jar: CookieJar,
   Json(encoded_bearer_token): Json<ClaimsEncoded>,
 ) -> Result<Json<ClaimsEncoded>, StatusCode> {
+    let refresh_token = read_refresh_token(&jar)
+      .ok_or(StatusCode::UNAUTHORIZED)?;
+
   let decoded = encoded_bearer_token.clone().decode();
   let bearer_token: Claims;
 
@@ -179,11 +194,11 @@ pub async fn refresh_token(
   }
 
   // refresh token is expired
-  if bearer_token.is_refresh_token_expired(pool.get().await.unwrap()).await { return Err(StatusCode::UNAUTHORIZED); }
+  if Claims::is_refresh_token_expired(pool.get().await.unwrap(), refresh_token.clone()).await { return Err(StatusCode::UNAUTHORIZED); }
 
   let new_token = Claims::from_existing(&bearer_token);
 
-  let Some(refresh_token_id) = db::tokens::select_refresh_token_id(pool.get().await.unwrap(), bearer_token.refresh_token()).await else {
+  let Some(refresh_token_id) = db::tokens::select_refresh_token_id(pool.get().await.unwrap(), refresh_token).await else {
     return Err(StatusCode::INTERNAL_SERVER_ERROR);
   };
 

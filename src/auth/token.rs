@@ -36,8 +36,6 @@ pub struct Claims {
   jti: String,
   /// ID of a user (temporarily for compatibility, will be removed soon)
   pub user_id: i32,
-  /// Refresh token - used to refresh access token
-  refresh_token: String,
   roles: Vec<Roles>
 }
 
@@ -111,8 +109,8 @@ impl Claims {
   }
 
   /// Checks whether the refresh token is expired or not.
-  pub async fn is_refresh_token_expired(&self, mut conn: DbConn) -> bool {
-    let Some(refresh_token_exp) = select_refresh_token_expiration(&mut conn, self.refresh_token.clone()).await else {
+  pub async fn is_refresh_token_expired(mut conn: DbConn, refresh_token: String) -> bool {
+    let Some(refresh_token_exp) = select_refresh_token_expiration(&mut conn, refresh_token).await else {
       return true;
     };
 
@@ -172,7 +170,6 @@ impl Claims {
       iat: current_time,
       jti: Claims::generate_random_string(),
       user_id,
-      refresh_token: Claims::generate_random_string(),
       roles: vec![Roles::User]
     }
   }
@@ -187,15 +184,7 @@ impl Claims {
   /// ```
 
   pub fn from_existing(token: &Claims) -> Claims {
-    let mut new_token = Claims::new(token.user_id, token.sub.clone());
-    new_token.refresh_token = token.refresh_token.clone();
-
-    new_token
-  }
-
-  /// Returns the refresh token.
-  pub fn refresh_token(&self) -> String {
-    self.refresh_token.clone()
+    Claims::new(token.user_id, token.sub.clone())
   }
 
   /// Returns the access token.
@@ -203,8 +192,8 @@ impl Claims {
     self.jti.clone()
   }
 
-  pub async fn add_session_tokens_to_db(&self, pool: ConnectionPool) -> Result<(i32, i32), diesel::result::Error> {
-    insert_session_tokens(pool.get().await.unwrap(), self.user_id, self.refresh_token(), self.access_token()).await
+  pub async fn add_session_tokens_to_db(&self, pool: ConnectionPool, refresh_token: String) -> Result<(i32, i32), diesel::result::Error> {
+    insert_session_tokens(pool.get().await.unwrap(), self.user_id, refresh_token, self.access_token()).await
   }
 
   #[allow(dead_code)]
@@ -216,8 +205,8 @@ impl Claims {
   ///
   /// bearer_token.add_refresh_token_to_db(conn)
   /// ```
-  pub async fn add_refresh_token_to_db(&self, pool: ConnectionPool) -> Result<i32, diesel::result::Error> {
-    insert_refresh_token(pool.get().await.unwrap(), self.user_id, self.refresh_token()).await
+  pub async fn add_refresh_token_to_db(&self, pool: ConnectionPool, refresh_token: String) -> Result<i32, diesel::result::Error> {
+    insert_refresh_token(pool.get().await.unwrap(), self.user_id, refresh_token).await
   }
 
   /// Adds a new access token to the database.

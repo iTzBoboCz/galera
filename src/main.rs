@@ -46,6 +46,7 @@ mod oidc;
 mod openapi;
 mod config;
 mod checksum;
+mod cookies;
 
 pub type ConnectionPool = Pool<Manager<MysqlConnection>>;
 pub type DbConn = deadpool::managed::Object<Manager<MysqlConnection>>;

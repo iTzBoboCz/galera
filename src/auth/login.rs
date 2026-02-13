@@ -14,7 +14,7 @@ pub struct UserLogin {
 
 impl UserLogin {
   /// Tries to log the user in.
-  pub async fn login(&self, pool: ConnectionPool) -> Option<Claims> {
+  pub async fn login(&self, pool: ConnectionPool, refresh_token: String) -> Option<Claims> {
     let Ok(Some(User { id, uuid,.. })) = check_user_login(pool.get().await.unwrap(), self.username_or_email.clone(), self.password.clone()).await else {
       return None;
     };
@@ -22,7 +22,7 @@ impl UserLogin {
     let token = Claims::new(id, uuid);
 
     // add refresh and access tokens to db
-    token.add_session_tokens_to_db(pool).await.ok()?;
+    token.add_session_tokens_to_db(pool, refresh_token).await.ok()?;
 
     Some(token)
   }

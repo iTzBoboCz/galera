@@ -1,21 +1,25 @@
 use std::time::Instant;
 use crate::auth::token::Claims;
 use crate::auth::login::LoginResponse;
+use crate::config::get_frontend_callback_url;
+use crate::cookies::build_refresh_cookie;
 use crate::db::oidc::insert_oidc_user;
 use crate::db::users::get_user_by_id;
 use crate::models::User;
 use crate::openapi::tags::{AUTH, AUTH_PUBLIC, OIDC, OTHER};
-use crate::routes::issue_login_response;
 use axum::extract::{Query, State};
+use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Redirect};
 use axum::{Json, http::StatusCode};
+use axum_extra::extract::CookieJar;
 use axum_extra::routing::TypedPath;
 use openidconnect::core::CoreAuthenticationFlow;
 use openidconnect::{AuthorizationCode, CsrfToken, Nonce, Scope, TokenResponse};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, warn};
 use utoipa::ToSchema;
-use crate::{AppState, OidcState, db};
+use uuid::Uuid;
+use crate::{AppState, ConnectionPool, OidcState, db};
 
 #[derive(TypedPath, Deserialize)]
 #[typed_path("/auth/oidc/{provider}/login")]
@@ -118,7 +122,9 @@ pub struct OidcCallbackQuery {
 pub async fn oidc_callback(
   OidcCallback { provider }: OidcCallback,
   Query(q): Query<OidcCallbackQuery>,
-  State(state): State<AppState>
+  State(state): State<AppState>,
+  headers: HeaderMap,
+  jar: CookieJar
 ) -> impl IntoResponse {
     // 0) Hard-disable the endpoint if OIDC is disabled
   let oidc = match &state.oidc {
@@ -200,7 +206,7 @@ pub async fn oidc_callback(
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
       };
       let claims = Claims::new(user.id, user.uuid);
-      return issue_login_response(state.pool, claims).await.into_response();
+      return issue_oidc_login_response(state.pool, headers, claims, jar).await.into_response();
     }
 
     // Continue to create a user
@@ -239,7 +245,7 @@ pub async fn oidc_callback(
           sub.clone(),
         ).await {
           Ok(()) => {
-            return issue_login_response(state.pool, Claims::new(existing.id, existing.uuid)).await.into_response();
+            return issue_oidc_login_response(state.pool, headers, Claims::new(existing.id, existing.uuid), jar).await.into_response();
           }
           Err(e) => {
             error!("DB error inserting oidc identity link: {e}");
@@ -273,7 +279,30 @@ pub async fn oidc_callback(
   };
 
   // 8) Issue normal JWT login response
-  issue_login_response(state.pool, Claims::new(user_id, uuid)).await.into_response()
+  issue_oidc_login_response(state.pool, headers, Claims::new(user_id, uuid), jar).await.into_response()
+}
+
+pub async fn issue_oidc_login_response(
+  pool: ConnectionPool,
+  headers: HeaderMap,
+  claims: Claims,
+  jar: CookieJar,
+) -> impl IntoResponse {
+  let refresh_token = Uuid::new_v4().to_string();
+
+  if let Err(e) = claims.add_session_tokens_to_db(pool.clone(), refresh_token.clone()).await {
+    error!("Failed to insert session tokens during OIDC callback: {e}");
+    return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+  }
+
+  let jar = jar.add(build_refresh_cookie(refresh_token, &headers));
+
+  let Some(frontend_callback_url) = get_frontend_callback_url() else {
+    error!("FRONTEND_URL not set or invalid (cannot redirect after OIDC login)");
+    return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+  };
+
+  (jar, Redirect::to(frontend_callback_url.as_str())).into_response()
 }
 
 #[derive(Serialize, Deserialize, ToSchema)]

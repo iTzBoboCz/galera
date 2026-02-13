@@ -10,7 +10,7 @@ license = "GPL-3.0-only"
 [dependencies]
 # Web server
 axum = { version = "0.8" }
-axum-extra = { version = "0.12", features = ["typed-routing", "typed-header"] }
+axum-extra = { version = "0.12", features = ["typed-routing", "typed-header", "cookie"] }
 
 # Database
 deadpool = { version = "0.12", features = ["rt_tokio_1", "serde", "managed" ] }
@@ -40,6 +40,7 @@ imagesize = "0.14"
 serde = { version = "1.0", features = ["derive"] }
 dotenv = "0.15"
 chrono = { version = "0.4", default-features = false, features = ["serde", "std"] }
+time = "0.3"
 uuid = { version = "1.20", features = ["v4"] }
 jsonwebtoken = { version = "10.3", default-features = false, features = ["rust_crypto"]}
 rand = "0.10"
