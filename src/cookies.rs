@@ -31,7 +31,7 @@ pub fn build_refresh_cookie(refresh_token: String, headers: &HeaderMap) -> Cooki
   error!("{} - {:?}", is_https(headers), headers);
   c.set_same_site(SameSite::Lax);
 
-  c.set_path("/login/refresh");
+  c.set_path("/auth/");
 
   c.set_max_age(Duration::days(30));
 

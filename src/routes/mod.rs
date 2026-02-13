@@ -80,13 +80,13 @@ pub async fn create_user(
 }
 
 #[derive(TypedPath)]
-#[typed_path("/login")]
+#[typed_path("/auth/login")]
 pub struct LoginRoute;
 
 /// You must provide either a username or an email together with a password.
 #[utoipa::path(
   post,
-  path = "/login",
+  path = "/auth/login",
   tags = [ AUTH, AUTH_PUBLIC ],
   request_body = UserLogin,
   responses(
@@ -141,7 +141,7 @@ async fn issue_login_response(pool: ConnectionPool, token: Claims, jar: CookieJa
 }
 
 #[derive(TypedPath)]
-#[typed_path("/login/refresh")]
+#[typed_path("/auth/refresh")]
 pub struct LoginRefreshRoute;
 
 /// Refreshes sent token
@@ -149,7 +149,7 @@ pub struct LoginRefreshRoute;
 // https://stackoverflow.com/a/53881397
 #[utoipa::path(
   post,
-  path = "/login/refresh",
+  path = "/auth/refresh",
   tags = [ AUTH, AUTH_PROTECTED ],
   request_body = ClaimsEncoded,
   responses(
