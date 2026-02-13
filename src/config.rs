@@ -7,10 +7,26 @@ pub fn get_backend_url() -> Option<Url> {
     .map(|s| s.trim().to_string())
     .filter(|s| !s.is_empty())?;
 
-  normalise_backend_url(&raw)
+  normalise_base_url(&raw)
 }
 
-fn normalise_backend_url(backend_url: &str) -> Option<Url> {
+/// Returns normalised BACKEND_URL
+pub fn get_frontend_url() -> Option<Url> {
+  let raw = std::env::var("FRONTEND_URL")
+    .ok()
+    .map(|s| s.trim().to_string())
+    .filter(|s| !s.is_empty())?;
+
+  normalise_base_url(&raw)
+}
+
+pub fn get_frontend_callback_url() -> Option<Url> {
+  let url = get_frontend_url()?;
+  // base ends with '/'
+  url.join("auth/oidc/callback/").ok()
+}
+
+fn normalise_base_url(backend_url: &str) -> Option<Url> {
   let Ok(mut url) = Url::parse(backend_url) else {
     return None;
   };
@@ -36,29 +52,29 @@ fn normalise_backend_url(backend_url: &str) -> Option<Url> {
 
 #[test]
 fn localhost() {
-  let url = normalise_backend_url("http://localhost:8000").unwrap();
+  let url = normalise_base_url("http://localhost:8000").unwrap();
   assert_eq!(url.as_str(), "http://localhost:8000/");
 }
 
 #[test]
 fn normalizes_extra_slashes() {
-  let url = normalise_backend_url("https://galera.test.local///api////").unwrap();
+  let url = normalise_base_url("https://galera.test.local///api////").unwrap();
   assert_eq!(url.as_str(), "https://galera.test.local/api/");
 }
 
 #[test]
 fn adds_trailing_slash() {
-  let url = normalise_backend_url("https://galera.test.local/api").unwrap();
+  let url = normalise_base_url("https://galera.test.local/api").unwrap();
   assert_eq!(url.as_str(), "https://galera.test.local/api/");
 }
 
 #[test]
 fn accepts_root_path() {
-  let url = normalise_backend_url("https://galera.test.local/").unwrap();
+  let url = normalise_base_url("https://galera.test.local/").unwrap();
   assert_eq!(url.as_str(), "https://galera.test.local/");
 }
 
 #[test]
 fn rejects_invalid_url() {
-  assert!(normalise_backend_url("not a url").is_none());
+  assert!(normalise_base_url("not a url").is_none());
 }

@@ -6,7 +6,7 @@ use tracing::debug;
 use std::time::Instant;
 use openidconnect::Nonce;
 
-use crate::config::get_backend_url;
+use crate::config::{get_backend_url, get_frontend_url};
 
 /// Stores temporary data between /login and /callback
 #[derive(Clone)]
@@ -36,6 +36,7 @@ pub async fn build_oidc_client(http_client: &reqwest::Client) -> Result<Configur
     }
 
     let backend_url = get_backend_url().ok_or("BACKEND_URL not set or invalid")?;
+    let _frontend_url = get_frontend_url().ok_or("FRONTEND_URL not set or invalid")?;
 
     let redirect = std::env::var("OIDC_REDIRECT_URL")
         .unwrap_or_else(|_| format!("{}auth/oidc/{}/callback", backend_url.as_str(), provider_key).to_string());
