@@ -5,7 +5,7 @@ use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, TokenData, Valid
 use tracing::error;
 use uuid::Uuid;
 use utoipa::ToSchema;
-use crate::{AppState, ConnectionPool, db::{self, tokens::{insert_access_token, insert_refresh_token, insert_session_tokens, select_refresh_token_expiration}, users}, instance_uuid};
+use crate::{AppState, ConnectionPool, db::{tokens::{insert_access_token, insert_session_tokens, select_refresh_token_expiration}, users}, instance_uuid};
 use crate::DbConn;
 use crate::auth::secret::Secret;
 use anyhow::{self, Context};
@@ -68,17 +68,6 @@ impl ClaimsEncoded {
     let decoded = jsonwebtoken::decode::<Claims>(self.encoded_claims.as_str(), &DecodingKey::from_secret(secret.as_ref()), &v);
 
     Ok(decoded?)
-  }
-
-  pub fn decode_without_validation(self) -> Result<TokenData<Claims>, jsonwebtoken::errors::Error> {
-    let secret = Secret::read().context("Secret couldn't be read.").unwrap();
-
-    let mut v = Validation::new(Algorithm::HS512);
-    v.set_audience(&["urn:galera:api"]);
-    v.validate_exp = false;
-
-    Ok(jsonwebtoken::decode::<Claims>(self.encoded_claims.as_str(), &DecodingKey::from_secret(secret.as_ref()),
-    &v)?)
   }
 }
 
@@ -174,19 +163,6 @@ impl Claims {
     }
   }
 
-  /// Makes a new token from an old one.
-  /// # Example
-  /// This will recreate a bearer token for user with ID 1.
-  /// ```
-  /// let bearer_token = Claims::new(1);
-  ///
-  /// let new_token = Claims::from_existing(&bearer_token);
-  /// ```
-
-  pub fn from_existing(token: &Claims) -> Claims {
-    Claims::new(token.user_id, token.sub.clone())
-  }
-
   /// Returns the access token.
   pub fn access_token(&self) -> String {
     self.jti.clone()
@@ -194,19 +170,6 @@ impl Claims {
 
   pub async fn add_session_tokens_to_db(&self, pool: ConnectionPool, refresh_token: String) -> Result<(i32, i32), diesel::result::Error> {
     insert_session_tokens(pool.get().await.unwrap(), self.user_id, refresh_token, self.access_token()).await
-  }
-
-  #[allow(dead_code)]
-  /// Adds a new refresh token to the database.
-  /// # Example
-  /// Adds the `refresh_token` of a bearer token for user with ID 1 to the database.
-  /// ```
-  /// let bearer_token = Claims::new(1);
-  ///
-  /// bearer_token.add_refresh_token_to_db(conn)
-  /// ```
-  pub async fn add_refresh_token_to_db(&self, pool: ConnectionPool, refresh_token: String) -> Result<i32, diesel::result::Error> {
-    insert_refresh_token(pool.get().await.unwrap(), self.user_id, refresh_token).await
   }
 
   /// Adds a new access token to the database.
@@ -220,31 +183,6 @@ impl Claims {
   /// ```
   pub async fn add_access_token_to_db(&self, pool: ConnectionPool, refresh_token_id: i32) -> Result<i32, diesel::result::Error> {
     insert_access_token(pool.get().await.unwrap(), refresh_token_id, self.access_token()).await
-  }
-
-  /// Deletes obsolete access tokens for a given refresh token ID from the database.
-  /// # Example
-  /// This will create a bearer token and refresh it.
-  /// ```
-  /// let bearer_token = Claims::new(1);
-  ///
-  /// // add refresh and access tokens to db
-  /// let refresh_token_id = bearer_token.add_refresh_token_to_db(conn).await?;
-  /// bearer_token.add_access_token_to_db(conn, refresh_token_id).await?;
-  ///
-  /// // create a new token from the previous one; only the refresh_token will be the same
-  /// let new_token = Claims::from_existing(&bearer_token);
-  ///
-  /// // remove obsolete access tokens
-  /// Claims::delete_obsolete_access_tokens(&conn, refresh_token_id).await;
-  ///
-  /// // add a new access token
-  /// new_token.add_access_token_to_db(conn, refresh_token_id).await?;
-  /// ```
-  pub async fn delete_obsolete_access_tokens(conn: DbConn, refresh_token_id: i32) -> Option<()> {
-    if db::tokens::delete_obsolete_access_tokens(conn, refresh_token_id).await.is_err() { return None; };
-
-    Some(())
   }
 
   /// Generates a new random string.

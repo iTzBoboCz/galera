@@ -2,7 +2,7 @@ use std::sync::Arc;
 use crate::auth::login::{UserLogin, UserInfo, LoginResponse};
 use crate::auth::token::{Claims, ClaimsEncoded};
 use crate::cookies::{build_refresh_cookie, clear_refresh_cookie, read_refresh_token};
-use crate::db::tokens::delete_session_by_refresh_token;
+use crate::db::tokens::{delete_obsolete_access_tokens, delete_session_by_refresh_token};
 use crate::db::{self, users::get_user_by_id};
 use crate::directories::Directories;
 use crate::models::NewUser;
@@ -13,7 +13,7 @@ use axum::http::HeaderMap;
 use axum::{Json, http::StatusCode};
 use axum_extra::extract::CookieJar;
 use axum_extra::routing::TypedPath;
-use tracing::{info, warn};
+use tracing::info;
 use utoipa::ToSchema;
 use uuid::Uuid;
 use crate::{AppState, ConnectionPool, scan};
@@ -175,18 +175,14 @@ pub async fn logout(
 #[typed_path("/auth/refresh")]
 pub struct LoginRefreshRoute;
 
-/// Refreshes sent token
-// TODO: send token in header instead of body
-// https://stackoverflow.com/a/53881397
+/// Issues a new access token when a valid refresh token is attached
 #[utoipa::path(
   post,
   path = "/auth/refresh",
-  tags = [ AUTH, AUTH_PROTECTED ],
-  request_body = ClaimsEncoded,
+  tags = [ AUTH, AUTH_PUBLIC ],
   responses(
     (status = 200, description = "Token refreshed", body = ClaimsEncoded),
-    (status = 400, description = "Invalid JSON or wrong shape"),
-    (status = 401, description = "Unauthorized"),
+    (status = 401, description = "Unauthorized (missing/invalid/expired refresh_token cookie)"),
     (status = 500, description = "Internal server error")
   )
 )]
@@ -194,52 +190,36 @@ pub async fn refresh_token(
   _: LoginRefreshRoute,
   State(AppState { pool,.. }): State<AppState>,
   jar: CookieJar,
-  Json(encoded_bearer_token): Json<ClaimsEncoded>,
 ) -> Result<Json<ClaimsEncoded>, StatusCode> {
-    let refresh_token = read_refresh_token(&jar)
-      .ok_or(StatusCode::UNAUTHORIZED)?;
+  let refresh_token = read_refresh_token(&jar)
+    .ok_or(StatusCode::UNAUTHORIZED)?;
 
-  let decoded = encoded_bearer_token.clone().decode();
-  let bearer_token: Claims;
-
-  // access token is expired - most of the time (token needs to be refreshed because it is expired)
-  if decoded.is_err() {
-    let expired = match decoded.unwrap_err().kind() {
-      jsonwebtoken::errors::ErrorKind::ExpiredSignature => true,
-      _ => false
-    };
-
-    // the error is not expired token
-    if !expired { return Err(StatusCode::UNAUTHORIZED) }
-
-    let temp = encoded_bearer_token.decode_without_validation();
-
-    // couldn't be decoded
-    if temp.is_err() { return Err(StatusCode::UNAUTHORIZED) }
-
-
-    bearer_token = temp.unwrap().claims
-  } else {
-    // access token is not yet expired
-    bearer_token = decoded.unwrap().claims;
-  }
+  let Some((refresh_token_id, user_id)) =
+    db::tokens::select_refresh_token_session(pool.get().await.unwrap(), refresh_token.clone())
+      .await
+      .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+  else {
+    return Err(StatusCode::UNAUTHORIZED);
+  };
 
   // refresh token is expired
   if Claims::is_refresh_token_expired(pool.get().await.unwrap(), refresh_token.clone()).await { return Err(StatusCode::UNAUTHORIZED); }
 
-  let new_token = Claims::from_existing(&bearer_token);
-
-  let Some(refresh_token_id) = db::tokens::select_refresh_token_id(pool.get().await.unwrap(), refresh_token).await else {
+  let Some(user) = get_user_by_id(pool.get().await.unwrap(), user_id).await else {
     return Err(StatusCode::INTERNAL_SERVER_ERROR);
   };
 
-  Claims::delete_obsolete_access_tokens(pool.get().await.unwrap(), refresh_token_id).await;
+  let new_token = Claims::new(user.id, user.uuid);
 
-  if new_token.add_access_token_to_db(pool, refresh_token_id).await.is_err() { return Err(StatusCode::INTERNAL_SERVER_ERROR); }
+  delete_obsolete_access_tokens(pool.get().await.unwrap(), refresh_token_id)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-  let Ok(new_encoded_token) = new_token.encode() else {
-    return Err(StatusCode::INTERNAL_SERVER_ERROR);
-  };
+  new_token.add_access_token_to_db(pool, refresh_token_id)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+  let new_encoded_token = new_token.encode().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
   Ok(Json(new_encoded_token))
 }

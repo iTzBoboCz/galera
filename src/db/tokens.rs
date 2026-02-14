@@ -7,7 +7,9 @@ use diesel::{Connection, RunQueryDsl};
 use diesel::QueryDsl;
 use diesel::OptionalExtension;
 use diesel::ExpressionMethods;
+use tracing::error;
 
+#[allow(dead_code)]
 /// Inserts a new refresh token.
 /// # Example
 /// This will insert a new refresh token for a user with ID 1.
@@ -29,16 +31,29 @@ pub async fn insert_refresh_token(conn: DbConn, user_id: i32, refresh_token: Str
   .map_err(|_| diesel::result::Error::RollbackTransaction)?
 }
 
-/// Selects refresh token ID from a given refresh token.
-pub async fn select_refresh_token_id(conn: DbConn, refresh_token: String) -> Option<i32> {
-  conn.interact(move |c| {
-    auth_refresh_token::table
-      .select(auth_refresh_token::id)
-      .filter(auth_refresh_token::refresh_token.eq(refresh_token))
-      .first(c)
-      .optional()
-      .unwrap()
-  }).await.unwrap()
+/// Selects (refresh_token_id, user_id) from a given refresh token value.
+pub async fn select_refresh_token_session(
+  conn: DbConn,
+  refresh_token: String,
+) -> Result<Option<(i32, i32)>, diesel::result::Error> {
+  let result = conn
+    .interact(move |c| {
+      auth_refresh_token::table
+        .select((auth_refresh_token::id, auth_refresh_token::user_id))
+        .filter(auth_refresh_token::refresh_token.eq(refresh_token))
+        .first::<(i32, i32)>(c)
+        .optional()
+    })
+    .await
+    .map_err(|e| {
+      error!("DB interact failed in select_refresh_token_session: {e}");
+      diesel::result::Error::DatabaseError(
+        diesel::result::DatabaseErrorKind::Unknown,
+        Box::new(format!("interact failed: {e}")),
+      )
+    })??;
+
+  Ok(result)
 }
 
 /// Selects expiration time from a given refresh token.
@@ -76,13 +91,16 @@ pub async fn insert_access_token(conn: DbConn, refresh_token_id: i32, access_tok
 
 /// Deletes obsolete access tokens for a given refresh token.
 pub async fn delete_obsolete_access_tokens(conn: DbConn, refresh_token_id: i32) -> Result<usize, diesel::result::Error> {
-  conn.interact(move |c| {
-    diesel::delete(
-      auth_access_token::table
-        .filter(auth_access_token::refresh_token_id.eq(refresh_token_id))
-    )
+  conn
+    .interact(move |c| {
+      diesel::delete(
+        auth_access_token::table
+          .filter(auth_access_token::refresh_token_id.eq(refresh_token_id)),
+      )
       .execute(c)
-  }).await.unwrap()
+    })
+    .await
+    .map_err(|_| diesel::result::Error::RollbackTransaction)?
 }
 
 pub async fn insert_session_tokens(conn: DbConn, user_id: i32, refresh_token: String, access_token: String) -> Result<(i32, i32), diesel::result::Error> {
