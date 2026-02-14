@@ -24,7 +24,7 @@ use uuid::Uuid;
 use crate::auth::secret::Secret;
 use crate::directories::Directories;
 use axum::{response::{Html, IntoResponse}, routing::get, Router, http::Request, middleware::{Next, self}, extract::{MatchedPath}, body::Body};
-use deadpool_diesel::{Pool, Runtime, Manager};
+use deadpool_diesel::{Manager, Pool, Runtime, Timeouts};
 use diesel::{MysqlConnection};
 use diesel_migrations::MigrationHarness;
 use metrics_exporter_prometheus::{Matcher, PrometheusBuilder, PrometheusHandle};
@@ -60,6 +60,13 @@ async fn create_db_pool() -> Result<ConnectionPool, Box<dyn std::error::Error>> 
 
   let pool = Pool::builder(manager)
     .max_size(8)
+    .runtime(Runtime::Tokio1)
+    .timeouts(Timeouts {
+      wait: Some(std::time::Duration::from_secs(5)), // how long Pool::get waits for a free conn
+      create: Some(std::time::Duration::from_secs(5)), // how long creating a new conn may take
+      recycle: Some(std::time::Duration::from_secs(5)), // how long recycling/health-check may take
+    })
+    .recycle_timeout(Some(std::time::Duration::from_secs(60)))
     .build()?;
 
   Ok(pool)
