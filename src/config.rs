@@ -1,5 +1,12 @@
 use openidconnect::reqwest::Url;
 
+/// Returns normalised cookie Path attribute from BACKEND_URL
+pub fn auth_cookie_path() -> Option<String> {
+  let backend = get_backend_url()?;
+
+  Some(format!("{}auth/", backend.path()))
+}
+
 /// Returns normalised BACKEND_URL
 pub fn get_backend_url() -> Option<Url> {
   let raw = std::env::var("BACKEND_URL")

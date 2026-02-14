@@ -3,6 +3,8 @@ use axum_extra::extract::{CookieJar, cookie::{Cookie, SameSite}};
 use time::Duration;
 use tracing::error;
 
+use crate::config::auth_cookie_path;
+
 pub const REFRESH_COOKIE: &str = "refresh_token";
 
 /// Determine if the original request was HTTPS.
@@ -31,7 +33,7 @@ pub fn build_refresh_cookie(refresh_token: String, headers: &HeaderMap) -> Cooki
   error!("{} - {:?}", is_https(headers), headers);
   c.set_same_site(SameSite::Lax);
 
-  c.set_path("/auth/");
+  c.set_path(auth_cookie_path().unwrap_or_else(|| "/auth/".to_string()));
 
   c.set_max_age(Duration::days(30));
 
@@ -44,7 +46,7 @@ pub fn clear_refresh_cookie(headers: &HeaderMap) -> Cookie<'static> {
   c.set_http_only(true);
   c.set_secure(is_https(headers));
   c.set_same_site(SameSite::Lax);
-  c.set_path("/auth/");
+  c.set_path(auth_cookie_path().unwrap_or_else(|| "/auth/".to_string()));
   c.set_max_age(Duration::seconds(0));
 
   c
