@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use crate::auth::login::{UserLogin, UserInfo, LoginResponse};
-use crate::auth::token::{Claims, ClaimsEncoded};
+use crate::auth::token::Claims;
 use crate::cookies::{build_refresh_cookie, clear_refresh_cookie, read_refresh_token};
 use crate::db::tokens::{delete_obsolete_access_tokens, delete_session_by_refresh_token};
 use crate::db::{self, users::get_user_by_id};
@@ -16,7 +16,7 @@ use axum_extra::routing::TypedPath;
 use tracing::info;
 use utoipa::ToSchema;
 use uuid::Uuid;
-use crate::{AppState, ConnectionPool, scan};
+use crate::{AppState, scan};
 use serde::{Deserialize, Serialize};
 
 pub mod oidc;
@@ -116,13 +116,13 @@ pub async fn login(
 
   let jar = jar.add(build_refresh_cookie(refresh_token, &headers));
 
-  issue_login_response(pool, token, jar).await
-}
-
-async fn issue_login_response(pool: ConnectionPool, token: Claims, jar: CookieJar) -> Result<(CookieJar, Json<LoginResponse>), StatusCode> {
   let Some(user) = get_user_by_id(pool.get().await.unwrap(), token.user_id).await else {
     return Err(StatusCode::INTERNAL_SERVER_ERROR);
   };
+  issue_login_response(user, token, jar).await
+}
+
+async fn issue_login_response(user: User, token: Claims, jar: CookieJar) -> Result<(CookieJar, Json<LoginResponse>), StatusCode> {
 
   let Ok(encoded) = token.encode() else {
     return Err(StatusCode::INTERNAL_SERVER_ERROR);
@@ -181,7 +181,7 @@ pub struct LoginRefreshRoute;
   path = "/auth/refresh",
   tags = [ AUTH, AUTH_PUBLIC ],
   responses(
-    (status = 200, description = "Token refreshed", body = ClaimsEncoded),
+    (status = 200, description = "Token refreshed", body = LoginResponse),
     (status = 401, description = "Unauthorized (missing/invalid/expired refresh_token cookie)"),
     (status = 500, description = "Internal server error")
   )
@@ -190,7 +190,7 @@ pub async fn refresh_token(
   _: LoginRefreshRoute,
   State(AppState { pool,.. }): State<AppState>,
   jar: CookieJar,
-) -> Result<Json<ClaimsEncoded>, StatusCode> {
+) -> Result<(CookieJar, Json<LoginResponse>), StatusCode> {
   let refresh_token = read_refresh_token(&jar)
     .ok_or(StatusCode::UNAUTHORIZED)?;
 
@@ -209,7 +209,8 @@ pub async fn refresh_token(
     return Err(StatusCode::INTERNAL_SERVER_ERROR);
   };
 
-  let new_token = Claims::new(user.id, user.uuid);
+  let user_uuid = user.uuid.clone();
+  let new_token = Claims::new(user.id, user_uuid);
 
   delete_obsolete_access_tokens(pool.get().await.unwrap(), refresh_token_id)
     .await
@@ -219,9 +220,7 @@ pub async fn refresh_token(
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-  let new_encoded_token = new_token.encode().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-  Ok(Json(new_encoded_token))
+  issue_login_response(user, new_token, jar).await
 }
 
 #[derive(TypedPath, Deserialize)]
