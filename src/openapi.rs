@@ -159,11 +159,21 @@ struct ServerPrefix;
 
 impl Modify for ServerPrefix {
   fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
-    // reuse your existing helper
-    let prefix = crate::config::get_backend_url()
-      .map(|u| u.path().to_string()) // "/api/" or "/"
-      .unwrap_or( "/".to_string());
+    // Preferred prefix from BACKEND_URL path ("/" or "/api/")
+    let preferred = crate::config::get_backend_url()
+      .map(|u| u.path().to_string())
+      .unwrap_or_else(|| "/".to_string());
 
-    openapi.servers = Some(vec![Server::new(prefix)]);
+    let preferred = if preferred == "/" {
+      "/".to_string()
+    } else {
+      preferred.trim_end_matches('/').to_string() // "/api"
+    };
+
+    // Always offer both for Swagger UI usability
+    let a = Server::new(preferred.as_str());
+    let b = if preferred == "/api" { Server::new("/") } else { Server::new("/api") };
+
+    openapi.servers = Some(vec![a, b]);
   }
 }
