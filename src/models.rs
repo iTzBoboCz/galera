@@ -40,6 +40,27 @@ impl NewUser {
   pub fn new_oidc(oidc_provider: String, oidc_subject: String, email: String) -> NewUser {
     NewUser { username: format!("oidc-{}-{}", oidc_provider, oidc_subject).to_lowercase().to_owned(), email, password: None, uuid: Uuid::new_v4().to_string() }
   }
+}
+
+impl From<UserInsert> for NewUser {
+  fn from(u: UserInsert) -> Self {
+    Self {
+      uuid: Uuid::new_v4().to_string(),
+      username: u.username,
+      email: u.email,
+      password: u.password,
+    }
+  }
+}
+
+#[derive(Serialize, Deserialize, ToSchema, Clone)]
+pub struct UserInsert {
+  pub username: String,
+  pub email: String,
+  pub password: Option<String>,
+}
+
+impl UserInsert {
 
   /// Encrypts the password.
   // TODO: deduplicate later

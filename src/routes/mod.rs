@@ -5,7 +5,7 @@ use crate::cookies::{build_refresh_cookie, clear_refresh_cookie, read_refresh_to
 use crate::db::tokens::{delete_obsolete_access_tokens, delete_session_by_refresh_token};
 use crate::db::{self, users::get_user_by_id};
 use crate::directories::Directories;
-use crate::models::NewUser;
+use crate::models::{NewUser, User, UserInsert};
 use crate::openapi::tags::{AUTH, AUTH_PROTECTED, AUTH_PUBLIC, OTHER};
 use axum::Extension;
 use axum::extract::State;
@@ -48,7 +48,7 @@ pub struct UserRoute;
   post,
   path = "/user",
   tags = [ AUTH, AUTH_PROTECTED ],
-  request_body = NewUser,
+  request_body = UserInsert,
   responses(
     (status = 200, description = "User created"),
     (status = 400, description = "Invalid JSON or wrong shape"),
@@ -61,7 +61,7 @@ pub struct UserRoute;
 pub async fn create_user(
   _: UserRoute,
   State(AppState { pool, auth_policy,..  }): State<AppState>,
-  Json(user): Json<NewUser>,
+  Json(user): Json<UserInsert>,
 ) -> Result<StatusCode, StatusCode> {
   if auth_policy.disable_local_auth || auth_policy.disable_local_signups {
     return Err(StatusCode::SERVICE_UNAVAILABLE);
@@ -72,7 +72,7 @@ pub async fn create_user(
   // TODO: investigate passing pool vs connection as parameter
   if !db::users::is_user_unique(pool.get().await.unwrap(), user.clone()).await { return Err(StatusCode::CONFLICT); };
 
-  let new_user = user.hash_password();
+  let new_user = NewUser::from(user.hash_password());
   let result = db::users::insert_user(pool.get().await.unwrap(), new_user.clone()).await;
   if result == 0 { return Err(StatusCode::INTERNAL_SERVER_ERROR) }
 

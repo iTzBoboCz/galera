@@ -1,4 +1,4 @@
-use crate::models::{NewUser, User};
+use crate::models::{NewUser, User, UserInsert};
 use crate::schema::user;
 use crate::DbConn;
 use diesel::BoolExpressionMethods;
@@ -32,7 +32,7 @@ pub async fn insert_user(conn: DbConn, user: NewUser) -> usize {
 /// # Example
 /// This will add a new user only if it doesn't already exist.
 /// ```
-/// let user = NewUser {
+/// let user = UserInsert {
 ///   username: String::from("foo"),
 ///   email: String::from("foo@bar.foo"),
 ///   password: String::from("bar")
@@ -41,7 +41,7 @@ pub async fn insert_user(conn: DbConn, user: NewUser) -> usize {
 ///   insert_user(&conn, user);
 /// }
 /// ```
-pub async fn is_user_unique(conn: DbConn, user: NewUser) -> bool {
+pub async fn is_user_unique(conn: DbConn, user: UserInsert) -> bool {
   conn.interact(move |c| {
     let user_id: Option<i32> = user::table
       .select(user::id)
