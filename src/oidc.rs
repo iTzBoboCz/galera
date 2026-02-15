@@ -14,6 +14,7 @@ pub struct PendingLogin {
     pub provider: String,
     pub nonce: Nonce,
     pub created_at: Instant,
+    pub redirect: Option<String>,
 }
 
 pub type ConfiguredCoreClient = CoreClient<
@@ -56,6 +57,39 @@ pub async fn build_oidc_client(http_client: &reqwest::Client) -> Result<Configur
     .set_redirect_uri(RedirectUrl::new(redirect)?);
 
     Ok(client)
+}
+
+pub fn sanitize_frontend_redirect(r: Option<String>) -> Option<String> {
+  let r = r?.trim().to_string();
+  if r.is_empty() { return None; }
+  if !r.starts_with('/') || r.starts_with("//") { return None; }
+  if r.contains('\\') { return None; }
+  if r.chars().any(|c| c.is_control()) { return None; }
+
+  let lower = r.to_ascii_lowercase();
+  if lower.contains("http:") || lower.contains("https:") { return None; }
+
+  Some(r)
+}
+
+#[test]
+fn sanitize_frontend_redirect_test() {
+  // reject
+  assert_eq!(sanitize_frontend_redirect(Some("maliciousdomain.com".into())), None);
+  assert_eq!(sanitize_frontend_redirect(Some("//".into())), None);
+  assert_eq!(sanitize_frontend_redirect(Some("".into())), None);
+  assert_eq!(sanitize_frontend_redirect(Some("\\".into())), None);
+  assert_eq!(sanitize_frontend_redirect(Some("/\nlogin".into())), None);
+  assert_eq!(sanitize_frontend_redirect(Some("   ".into())), None);
+
+  // accept
+  assert_eq!(sanitize_frontend_redirect(Some("/".into())), Some("/".into()));
+  assert_eq!(sanitize_frontend_redirect(Some("/settings".into())), Some("/settings".into()));
+  assert_eq!(sanitize_frontend_redirect(Some("/album/test".into())), Some("/album/test".into()));
+  assert_eq!(
+    sanitize_frontend_redirect(Some("/favorites?tab=liked".into())),
+    Some("/favorites?tab=liked".into())
+  );
 }
 
 // pub async fn verify_secret() {

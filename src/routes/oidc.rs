@@ -1,6 +1,5 @@
 use std::time::Instant;
 use crate::auth::token::Claims;
-use crate::auth::login::LoginResponse;
 use crate::config::get_frontend_callback_url;
 use crate::cookies::build_refresh_cookie;
 use crate::db::oidc::insert_oidc_user;
@@ -27,11 +26,17 @@ pub struct OidcLogin {
   pub provider: String,
 }
 
+#[derive(Deserialize)]
+pub struct OidcLoginQuery {
+  pub redirect: Option<String>
+}
+
 #[utoipa::path(
   get,
   path = "/auth/oidc/{provider}/login",
   params(
-    ("provider" = String, Path, description = "OIDC provider key")
+    ("provider" = String, Path, description = "OIDC provider key"),
+    ("redirect" = Option<String>, Query, description = "Frontend relative path to redirect to after login")
   ),
   tags = [ AUTH, OIDC, AUTH_PUBLIC ],
   responses(
@@ -42,6 +47,7 @@ pub struct OidcLogin {
 )]
 pub async fn oidc_login(
   OidcLogin { provider }: OidcLogin,
+  Query(OidcLoginQuery { redirect: unsanitized_redirect }): Query<OidcLoginQuery>,
   State(state): State<AppState>,
 ) -> impl IntoResponse {
     let oidc = match &state.oidc {
@@ -71,6 +77,8 @@ pub async fn oidc_login(
     .add_scope(Scope::new("email".into()))
     .url();
 
+    let redirect = crate::oidc::sanitize_frontend_redirect(unsanitized_redirect);
+
   // Store state -> nonce + provider for callback validation
   oidc.login_states.insert(
     csrf_token.secret().to_owned(),
@@ -78,6 +86,7 @@ pub async fn oidc_login(
       provider: provider.clone(),
       nonce,
       created_at: Instant::now(),
+      redirect
     },
   );
 
@@ -111,7 +120,7 @@ pub struct OidcCallbackQuery {
     ("state" = String, Query, description = "CSRF state")
   ),
   responses(
-    (status = 200, description = "Login successful", body = LoginResponse),
+    (status = 302, description = "Redirect to frontend callback"),
     (status = 400, description = "Bad request"),
     (status = 401, description = "Authentication failed"),
     (status = 404, description = "Provider not found"),
@@ -206,7 +215,7 @@ pub async fn oidc_callback(
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
       };
       let claims = Claims::new(user.id, user.uuid);
-      return issue_oidc_login_response(state.pool, headers, claims, jar).await.into_response();
+      return issue_oidc_login_response(state.pool, headers, claims, jar, pending.redirect).await.into_response();
     }
 
     // Continue to create a user
@@ -245,7 +254,7 @@ pub async fn oidc_callback(
           sub.clone(),
         ).await {
           Ok(()) => {
-            return issue_oidc_login_response(state.pool, headers, Claims::new(existing.id, existing.uuid), jar).await.into_response();
+            return issue_oidc_login_response(state.pool, headers, Claims::new(existing.id, existing.uuid), jar, pending.redirect).await.into_response();
           }
           Err(e) => {
             error!("DB error inserting oidc identity link: {e}");
@@ -279,7 +288,7 @@ pub async fn oidc_callback(
   };
 
   // 8) Issue normal JWT login response
-  issue_oidc_login_response(state.pool, headers, Claims::new(user_id, uuid), jar).await.into_response()
+  issue_oidc_login_response(state.pool, headers, Claims::new(user_id, uuid), jar, pending.redirect).await.into_response()
 }
 
 pub async fn issue_oidc_login_response(
@@ -287,6 +296,7 @@ pub async fn issue_oidc_login_response(
   headers: HeaderMap,
   claims: Claims,
   jar: CookieJar,
+  redirect: Option<String>
 ) -> impl IntoResponse {
   let refresh_token = Uuid::new_v4().to_string();
 
@@ -297,10 +307,16 @@ pub async fn issue_oidc_login_response(
 
   let jar = jar.add(build_refresh_cookie(refresh_token, &headers));
 
-  let Some(frontend_callback_url) = get_frontend_callback_url() else {
+  let Some(mut frontend_callback_url) = get_frontend_callback_url() else {
     error!("FRONTEND_URL not set or invalid (cannot redirect after OIDC login)");
     return StatusCode::INTERNAL_SERVER_ERROR.into_response();
   };
+
+    if let Some(r) = redirect.as_deref() {
+      frontend_callback_url
+        .query_pairs_mut()
+        .append_pair("redirect", r);
+    }
 
   (jar, Redirect::to(frontend_callback_url.as_str())).into_response()
 }
