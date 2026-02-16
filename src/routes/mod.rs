@@ -40,6 +40,68 @@ pub async fn health(_: Health) -> StatusCode {
 }
 
 #[derive(TypedPath)]
+#[typed_path("/health/db")]
+pub struct HealthDb;
+
+#[utoipa::path(
+  get,
+  path = "/health/db",
+  tags = [ OTHER, AUTH_PUBLIC ],
+  responses(
+    (status = 200, description = "DB health check passed"),
+    (status = 503, description = "DB connection is stale and couldn't be refreshed, or DB pool is unavailable")
+  )
+)]
+pub async fn healthdb(
+  _: HealthDb,
+  State(AppState { pool, .. }): State<AppState>,
+) -> Result<(), (StatusCode, &'static str)> {
+  let checked = db::get_db(&pool)
+    .await
+    .map_err(|sc| (sc, "DB pool unavailable"))?;
+
+  checked
+    .run(|conn| db::healthcheck(conn))
+    .await
+    .map_err(|e| {
+      tracing::error!("healthdb (checked) failed: {e}");
+      (StatusCode::SERVICE_UNAVAILABLE, "DB connection is stale and couldn't be refreshed.")
+    })?;
+
+  Ok(())
+}
+
+#[derive(TypedPath)]
+#[typed_path("/health/db_unchecked")]
+pub struct HealthDbUnchecked;
+
+#[utoipa::path(
+  get,
+  path = "/health/db_unchecked",
+  tags = [ OTHER, AUTH_PUBLIC ],
+  responses(
+    (status = 200, description = "DB health check passed"),
+    (status = 503, description = "DB connection is stale or DB pool is unavailable")
+  )
+)]
+pub async fn healthdb_unchecked(
+  _: HealthDbUnchecked,
+  State(AppState { pool, .. }): State<AppState>,
+) -> Result<(), (StatusCode, &'static str)> {
+  let conn = pool.get().await.map_err(|e| {
+    tracing::error!("healthdb_unchecked pool.get failed: {e}");
+    (StatusCode::SERVICE_UNAVAILABLE, "DB pool unavailable")
+  })?;
+
+  db::healthcheck(conn).await.map_err(|e| {
+    tracing::error!("healthdb_unchecked query failed: {e}");
+    (StatusCode::SERVICE_UNAVAILABLE, "DB connection is stale")
+  })?;
+
+  Ok(())
+}
+
+#[derive(TypedPath)]
 #[typed_path("/user")]
 pub struct UserRoute;
 

@@ -40,6 +40,8 @@ pub mod tags {
     crate::routes::albums::delete_album_share_link,
     crate::routes::scan_media,
     crate::routes::health,
+    crate::routes::healthdb,
+    crate::routes::healthdb_unchecked,
     crate::routes::create_user,
     crate::routes::login,
     crate::routes::logout,

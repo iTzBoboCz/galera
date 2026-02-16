@@ -195,6 +195,8 @@ async fn run() -> Result<(), anyhow::Error> {
   let unprotected = Router::new()
     .route("/", get(handler))
     .typed_get(routes::health)
+    .typed_get(routes::healthdb)
+    .typed_get(routes::healthdb_unchecked)
     .route("/metrics", get(move || ready(recorder_handle.render())))
     .typed_get(routes::oidc::get_server_config)
     .typed_get(routes::oidc::oidc_login)
