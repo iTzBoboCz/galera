@@ -65,7 +65,7 @@ impl ClaimsEncoded {
     let mut v = Validation::new(Algorithm::HS512);
     v.set_audience(&["urn:galera:api"]);
 
-    let decoded = jsonwebtoken::decode::<Claims>(self.encoded_claims.as_str(), &DecodingKey::from_secret(secret.as_ref()), &v);
+    let decoded = jsonwebtoken::decode::<Claims>(self.encoded_claims.as_str(), &DecodingKey::from_secret(secret.as_bytes()), &v);
 
     Ok(decoded?)
   }
