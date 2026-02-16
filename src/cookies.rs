@@ -1,7 +1,6 @@
 use axum::http::{HeaderMap};
 use axum_extra::extract::{CookieJar, cookie::{Cookie, SameSite}};
 use time::Duration;
-use tracing::error;
 
 use crate::config::auth_cookie_path;
 
@@ -30,7 +29,6 @@ pub fn build_refresh_cookie(refresh_token: String, headers: &HeaderMap) -> Cooki
 
   c.set_http_only(true);
   c.set_secure(is_https(headers));
-  error!("{} - {:?}", is_https(headers), headers);
   c.set_same_site(SameSite::Lax);
 
   c.set_path(auth_cookie_path().unwrap_or_else(|| "/auth/".to_string()));
