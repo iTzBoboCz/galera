@@ -134,11 +134,11 @@ pub async fn oidc_callback(
   State(state): State<AppState>,
   headers: HeaderMap,
   jar: CookieJar
-) -> impl IntoResponse {
+) -> Result<(CookieJar, Redirect), (StatusCode, &'static str)> {
     // 0) Hard-disable the endpoint if OIDC is disabled
   let oidc = match &state.oidc {
     OidcState::Disabled => {
-      return (StatusCode::SERVICE_UNAVAILABLE, "OIDC is disabled").into_response();
+      return Err((StatusCode::SERVICE_UNAVAILABLE, "OIDC is disabled"));
     }
     OidcState::Enabled(enabled) => enabled,
   };
@@ -146,22 +146,22 @@ pub async fn oidc_callback(
   // Validate and consume CSRF "state"
   let pending = match oidc.login_states.remove(&q.state) {
     Some((_, p)) => p,
-    None => return (StatusCode::BAD_REQUEST, "Invalid/expired state").into_response(),
+    None => return Err((StatusCode::BAD_REQUEST, "Invalid/expired state")),
   };
 
   // Check if state = csrf_state per docs
   if pending.provider != provider {
-    return (StatusCode::BAD_REQUEST, "Provider mismatch").into_response();
+    return Err((StatusCode::BAD_REQUEST, "Provider mismatch"));
   }
 
   if pending.created_at.elapsed().as_secs() > LOGIN_STATE_TTL_SECS {
-    return (StatusCode::BAD_REQUEST, "Login expired").into_response();
+    return Err((StatusCode::BAD_REQUEST, "Login expired"));
   }
 
   // 2) Get provider client
   let prov = match oidc.oidc_providers.get(&provider) {
     Some(p) => p,
-    None => return (StatusCode::NOT_FOUND, "Unknown OIDC provider").into_response(),
+    None => return Err((StatusCode::NOT_FOUND, "Unknown OIDC provider")),
   };
 
   let client = &prov.client;
@@ -171,7 +171,7 @@ pub async fn oidc_callback(
     Ok(req) => req,
     Err(e) => {
       warn!("token endpoint not set / exchange_code failed: {e}");
-      return (StatusCode::BAD_REQUEST, "OIDC token endpoint not available").into_response();
+      return Err((StatusCode::BAD_REQUEST, "OIDC token endpoint not available"));
     }
   };
 
@@ -182,27 +182,27 @@ pub async fn oidc_callback(
     Ok(t) => t,
     Err(e) => {
       warn!("token exchange failed: {e}");
-      return (StatusCode::UNAUTHORIZED, "Token exchange failed").into_response();
+      return Err((StatusCode::UNAUTHORIZED, "Token exchange failed"));
     }
   };
 
   // 4) Verify ID token signature + nonce
   let id_token = match token_response.id_token() {
     Some(t) => t,
-    None => return (StatusCode::UNAUTHORIZED, "Missing id_token").into_response(),
+    None => return Err((StatusCode::UNAUTHORIZED, "Missing id_token")),
   };
 
   let claims = match id_token.claims(&client.id_token_verifier(), &pending.nonce) {
     Ok(c) => c,
     Err(e) => {
       warn!("id_token verification failed: {e}");
-      return (StatusCode::UNAUTHORIZED, "Invalid id_token").into_response();
+      return Err((StatusCode::UNAUTHORIZED, "Invalid id_token"));
     }
   };
 
   let sub = claims.subject().as_str().to_owned();
   let Some(email) = claims.email().map(|e| e.as_str().to_owned()) else {
-    return (StatusCode::BAD_REQUEST, "Missing email").into_response();
+    return Err((StatusCode::BAD_REQUEST, "Missing email"));
   };
 
   debug!("OIDC login ok provider={} sub={} email={:?}", provider, sub, email);
@@ -212,10 +212,10 @@ pub async fn oidc_callback(
     Ok(Some(oidc_identity)) => {
       let Some(user) = get_user_by_id(state.pool.get().await.unwrap(), oidc_identity.user_id).await else {
         error!("DB error selecting user by user_id after succesful oidc_identity select");
-        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        return Err((StatusCode::INTERNAL_SERVER_ERROR, ""));
       };
       let claims = Claims::new(user.id, user.uuid);
-      return issue_oidc_login_response(state.pool, headers, claims, jar, pending.redirect).await.into_response();
+      return issue_oidc_login_response(state.pool, headers, claims, jar, pending.redirect).await;
     }
 
     // Continue to create a user
@@ -223,7 +223,7 @@ pub async fn oidc_callback(
 
     Err(e) => {
       error!("DB error selecting oidc identity: {e}");
-      return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+      return Err((StatusCode::INTERNAL_SERVER_ERROR, ""));
     }
   }
 
@@ -243,7 +243,7 @@ pub async fn oidc_callback(
             "Refusing to link OIDC identity to existing user by email because email_verified is false for email={:?} (provider={})",
             email, provider
           );
-          return (StatusCode::UNAUTHORIZED, "Email not verified").into_response();
+          return Err((StatusCode::UNAUTHORIZED, "Email not verified"));
         }
 
         // Link identity: (provider, sub) -> existing user id
@@ -254,11 +254,11 @@ pub async fn oidc_callback(
           sub.clone(),
         ).await {
           Ok(()) => {
-            return issue_oidc_login_response(state.pool, headers, Claims::new(existing.id, existing.uuid), jar, pending.redirect).await.into_response();
+            return issue_oidc_login_response(state.pool, headers, Claims::new(existing.id, existing.uuid), jar, pending.redirect).await;
           }
           Err(e) => {
             error!("DB error inserting oidc identity link: {e}");
-            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, ""));
           }
         }
       }
@@ -266,29 +266,29 @@ pub async fn oidc_callback(
       Ok(None) => {}
       Err(e) => {
         error!("DB error selecting user by email: {e}");
-        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        return Err((StatusCode::INTERNAL_SERVER_ERROR, ""));
       }
     }
   }
 
   // 6) Not found → signup gate
   if !prov.config.allow_signup {
-    return (StatusCode::UNAUTHORIZED, "Signups disabled").into_response();
+    return Err((StatusCode::UNAUTHORIZED, "Signups disabled"));
   }
 
   // 7) Create new local user (OIDC-only) + link identity
   let Ok(user_id) = insert_oidc_user(state.pool.get().await.unwrap(), provider.clone(), sub.clone(), email).await else {
     debug!("Created a new OIDC-only user - IdP provider: {}, IdP sub: {}", provider, sub);
-    return (StatusCode::INTERNAL_SERVER_ERROR, "Can't create new oidc-only user").into_response();
+    return Err((StatusCode::INTERNAL_SERVER_ERROR, "Can't create new oidc-only user"));
   };
 
   let Some(User { uuid,.. }) = get_user_by_id(state.pool.get().await.unwrap(), user_id).await else {
     error!("DB error selecting user by user_id");
-    return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    return Err((StatusCode::INTERNAL_SERVER_ERROR, ""));
   };
 
   // 8) Issue normal JWT login response
-  issue_oidc_login_response(state.pool, headers, Claims::new(user_id, uuid), jar, pending.redirect).await.into_response()
+  issue_oidc_login_response(state.pool, headers, Claims::new(user_id, uuid), jar, pending.redirect).await
 }
 
 pub async fn issue_oidc_login_response(
@@ -297,19 +297,19 @@ pub async fn issue_oidc_login_response(
   claims: Claims,
   jar: CookieJar,
   redirect: Option<String>
-) -> impl IntoResponse {
+) -> Result<(CookieJar, Redirect), (StatusCode, &'static str)> {
   let refresh_token = Uuid::new_v4().to_string();
 
   if let Err(e) = claims.add_session_tokens_to_db(pool.clone(), refresh_token.clone()).await {
     error!("Failed to insert session tokens during OIDC callback: {e}");
-    return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    return Err((StatusCode::INTERNAL_SERVER_ERROR, "".into()));
   }
 
   let jar = jar.add(build_refresh_cookie(refresh_token, &headers));
 
   let Some(mut frontend_callback_url) = get_frontend_callback_url() else {
     error!("FRONTEND_URL not set or invalid (cannot redirect after OIDC login)");
-    return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    return Err((StatusCode::INTERNAL_SERVER_ERROR, "".into()));
   };
 
     if let Some(r) = redirect.as_deref() {
@@ -318,7 +318,7 @@ pub async fn issue_oidc_login_response(
         .append_pair("redirect", r);
     }
 
-  (jar, Redirect::to(frontend_callback_url.as_str())).into_response()
+  Ok((jar, Redirect::to(frontend_callback_url.as_str())))
 }
 
 #[derive(Serialize, Deserialize, ToSchema)]
