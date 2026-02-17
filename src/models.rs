@@ -1,3 +1,5 @@
+use crate::auth::login::{ACCESS_TOKEN_TTL_SECS, REFRESH_TOKEN_TTL_SECS};
+
 use super::schema::{album, album_media, album_invite, album_share_link, auth_access_token, auth_refresh_token, folder, media, favorite_media, user, oidc_identity};
 use chrono::{Duration, NaiveDateTime, Utc};
 use email_address::EmailAddress;
@@ -348,7 +350,7 @@ impl NewAuthRefreshToken {
     NewAuthRefreshToken {
       user_id,
       refresh_token,
-      expiration_time: Utc::now().naive_utc() + Duration::hours(1)
+      expiration_time: Utc::now().naive_utc() + Duration::seconds(REFRESH_TOKEN_TTL_SECS)
     }
   }
 }
@@ -378,7 +380,7 @@ impl NewAuthAccessToken {
     NewAuthAccessToken {
       refresh_token_id,
       access_token,
-      expiration_time: Utc::now().naive_utc() + Duration::minutes(15)
+      expiration_time: Utc::now().naive_utc() + Duration::seconds(ACCESS_TOKEN_TTL_SECS)
     }
   }
 }

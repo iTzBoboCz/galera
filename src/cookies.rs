@@ -2,7 +2,7 @@ use axum::http::{HeaderMap};
 use axum_extra::extract::{CookieJar, cookie::{Cookie, SameSite}};
 use time::Duration;
 
-use crate::config::auth_cookie_path;
+use crate::{auth::login::REFRESH_TOKEN_TTL_SECS, config::auth_cookie_path};
 
 pub const REFRESH_COOKIE: &str = "refresh_token";
 
@@ -33,7 +33,7 @@ pub fn build_refresh_cookie(refresh_token: String, headers: &HeaderMap) -> Cooki
 
   c.set_path(auth_cookie_path().unwrap_or_else(|| "/auth/".to_string()));
 
-  c.set_max_age(Duration::days(30));
+  c.set_max_age(Duration::seconds(REFRESH_TOKEN_TTL_SECS));
 
   c
 }

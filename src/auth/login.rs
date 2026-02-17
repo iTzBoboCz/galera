@@ -4,6 +4,9 @@ use sha2::Digest;
 use utoipa::ToSchema;
 use super::token::{Claims, ClaimsEncoded};
 
+pub const REFRESH_TOKEN_TTL_SECS: i64 = 30 * 24 * 60 * 60; // 30 days
+pub const ACCESS_TOKEN_TTL_SECS: i64 = 15 * 60; // 15 minutes
+
 /// Used for receiving login data.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct UserLogin {
