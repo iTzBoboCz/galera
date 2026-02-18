@@ -60,14 +60,19 @@ pub async fn healthdb(
 ) -> Result<(), (StatusCode, &'static str)> {
   let checked = db::get_db(&pool)
     .await
-    .map_err(|sc| (sc, "DB pool unavailable"))?;
+    .map_err(|e| (StatusCode::from(e), "DB pool unavailable"))?;
 
   checked
     .run(|conn| db::healthcheck(conn))
     .await
     .map_err(|e| {
       tracing::error!("healthdb (checked) failed: {e}");
-      (StatusCode::SERVICE_UNAVAILABLE, "DB connection is stale and couldn't be refreshed.")
+
+      if e.is_stale() {
+        (StatusCode::SERVICE_UNAVAILABLE, "DB connection is stale and couldn't be refreshed.")
+      } else {
+        (StatusCode::from(e), "DB healthcheck failed.")
+      }
     })?;
 
   Ok(())
@@ -97,7 +102,11 @@ pub async fn healthdb_unchecked(
 
   db::healthcheck(conn).await.map_err(|e| {
     tracing::error!("healthdb_unchecked query failed: {e}");
-    (StatusCode::SERVICE_UNAVAILABLE, "DB connection is stale")
+    if e.is_stale() {
+      (StatusCode::SERVICE_UNAVAILABLE, "DB connection is stale")
+    } else {
+      (StatusCode::SERVICE_UNAVAILABLE, "DB healthcheck failed")
+    }
   })?;
 
   Ok(())

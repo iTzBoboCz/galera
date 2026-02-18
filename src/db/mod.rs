@@ -8,8 +8,10 @@ pub mod users;
 pub mod oidc;
 
 use axum::http::StatusCode;
-use diesel::{RunQueryDsl, dsl::sql, sql_types::Integer};
-use tracing::{warn, error};
+use deadpool_diesel::{InteractError, PoolError};
+use diesel::{MysqlConnection, RunQueryDsl};
+use thiserror::Error;
+use tracing::warn;
 
 use crate::{ConnectionPool, DbConn};
 
@@ -18,35 +20,39 @@ pub struct CheckedDbConn<'a> {
   conn: DbConn,
 }
 
-pub async fn get_db(pool: &ConnectionPool) -> Result<CheckedDbConn<'_>, StatusCode> {
-  let conn = pool.get().await.map_err(|e| {
-    error!("DB pool.get failed: {e}");
-    StatusCode::SERVICE_UNAVAILABLE
-  })?;
-
+pub async fn get_db(pool: &ConnectionPool) -> Result<CheckedDbConn<'_>, DbError> {
+  let conn = pool.get().await.map_err(DbError::Pool)?;
   Ok(CheckedDbConn { pool, conn })
 }
 
+pub async fn interact_diesel<T, F>(conn: DbConn, f: F) -> Result<T, DbError>
+where
+  T: Send + 'static,
+  F: FnOnce(&mut MysqlConnection) -> Result<T, diesel::result::Error> + Send + 'static,
+{
+  let out = conn
+    .interact(f)
+    .await
+    .map_err(DbError::Interact)??;
+
+  Ok(out)
+}
+
 impl<'a> CheckedDbConn<'a> {
-  pub async fn run<T, Fut, F>(self, op: F) -> Result<T, diesel::result::Error>
+  pub async fn run<T, Fut, F>(self, op: F) -> Result<T, DbError>
   where
     F: Fn(DbConn) -> Fut,
-    Fut: std::future::Future<Output = Result<T, diesel::result::Error>>,
+    Fut: Future<Output = Result<T, DbError>>,
   {
     let pool = self.pool;
     let conn1 = self.conn;
 
     match op(conn1).await {
       Ok(v) => Ok(v),
-      Err(e) if is_stale_mysql_conn(&e) => {
+      Err(e) if e.is_stale() => {
         warn!("Stale DB connection detected, retrying once: {e}");
 
-        // conn1 already dropped here (out of scope), nothing to drop manually
-
-        let conn2 = pool
-          .get()
-          .await
-          .map_err(|_| diesel::result::Error::NotFound)?;
+        let conn2 = pool.get().await.map_err(DbError::Pool)?;
         op(conn2).await
       }
       Err(e) => Err(e),
@@ -63,14 +69,12 @@ fn is_stale_mysql_conn(e: &diesel::result::Error) -> bool {
     || s.contains("connection reset")
 }
 
-pub async fn healthcheck(conn: DbConn) -> Result<(), diesel::result::Error> {
-  conn
-    .interact(|c| {
-      let _one: i32 = sql::<Integer>("SELECT 1").get_result(c)?;
-      Ok::<(), diesel::result::Error>(())
-    })
-    .await
-    .map_err(|_| diesel::result::Error::RollbackTransaction)?
+pub async fn healthcheck(conn: DbConn) -> Result<(), DbError> {
+  interact_diesel(conn, |c| {
+    diesel::sql_query("SELECT 1").execute(c)?;
+    Ok(())
+  })
+  .await
 }
 
 /// Used for getting last inserted id.
@@ -78,4 +82,42 @@ pub async fn healthcheck(conn: DbConn) -> Result<(), diesel::result::Error> {
 pub struct LastInsertId {
   #[diesel(sql_type = diesel::sql_types::Integer)]
   pub id: i32,
+}
+
+#[derive(Debug, Error)]
+pub enum DbError {
+  // deadpool couldn't hand out a connection
+  #[error("pool error: {0}")]
+  Pool(#[from] PoolError),
+
+  // deadpool couldn't run your blocking closure (panic/cancel/etc.)
+  #[error("interact error: {0}")]
+  Interact(#[from] InteractError),
+
+  // real Diesel error (SQL constraint, not found, db went away, etc.)
+  #[error("diesel error: {0}")]
+  Diesel(#[from] diesel::result::Error),
+}
+
+impl DbError {
+  pub fn is_stale(&self) -> bool {
+    match self {
+      DbError::Diesel(e) => is_stale_mysql_conn(e),
+      DbError::Interact(_) => false,
+      DbError::Pool(_) => false,
+    }
+  }
+}
+
+impl From<DbError> for StatusCode {
+  fn from(e: DbError) -> Self {
+    match e {
+      DbError::Pool(_) | DbError::Interact(_) => StatusCode::SERVICE_UNAVAILABLE,
+
+      DbError::Diesel(d) => match d {
+        diesel::result::Error::NotFound => StatusCode::NOT_FOUND,
+        _ => StatusCode::INTERNAL_SERVER_ERROR,
+      },
+    }
+  }
 }
