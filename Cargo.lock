@@ -839,6 +839,7 @@ dependencies = [
  "openidconnect",
  "rand 0.10.0",
  "serde",
+ "serde_json",
  "sha2",
  "sys-info",
  "thiserror 2.0.18",

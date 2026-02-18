@@ -2,17 +2,19 @@ use std::sync::Arc;
 use crate::auth::login::{UserLogin, UserInfo, LoginResponse};
 use crate::auth::token::Claims;
 use crate::cookies::{build_refresh_cookie, clear_refresh_cookie, read_refresh_token};
-use crate::db::tokens::{delete_obsolete_access_tokens, delete_session_by_refresh_token};
+use crate::db::tokens::{delete_obsolete_access_tokens, delete_session_by_refresh_token, get_auth_session_origin};
 use crate::db::{self, users::get_user_by_id};
 use crate::directories::Directories;
-use crate::models::{NewUser, User, UserInsert};
+use crate::models::{NewUser, SessionOriginMethod, User, UserInsert};
 use crate::openapi::tags::{AUTH, AUTH_PROTECTED, AUTH_PUBLIC, OTHER};
 use axum::Extension;
 use axum::extract::State;
 use axum::http::HeaderMap;
+use axum::response::{IntoResponse, Redirect};
 use axum::{Json, http::StatusCode};
 use axum_extra::extract::CookieJar;
 use axum_extra::routing::TypedPath;
+use openidconnect::url::Url;
 use tracing::info;
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -218,19 +220,73 @@ pub struct LogoutRoute;
 )]
 pub async fn logout(
   _: LogoutRoute,
-  State(AppState { pool,.. }): State<AppState>,
+  State(AppState { pool, oidc,.. }): State<AppState>,
   headers: HeaderMap,
   jar: CookieJar,
-) -> (CookieJar, StatusCode) {
-  if let Some(refresh_token) = read_refresh_token(&jar) {
-    match delete_session_by_refresh_token(pool.get().await.unwrap(), refresh_token).await {
-      Ok(true) => {} // deleted
-      Ok(false) => tracing::debug!("logout: no session found"),
-      Err(e) => tracing::warn!("logout: failed to invalidate session: {e}"),
+) -> impl IntoResponse {
+  let cookie_cleared = clear_refresh_cookie(&headers);
+
+  let Some(refresh_token) = read_refresh_token(&jar) else {
+    return (jar.add(cookie_cleared), StatusCode::NO_CONTENT).into_response();
+  };
+
+  let mut sso_redirect: Option<Redirect> = None;
+
+  // try to do SSO logout
+  if let crate::OidcState::Enabled(oidc_enabled) = &oidc {
+    if let Ok(Some((_, session_origin))) = get_auth_session_origin(pool.get().await.unwrap(), refresh_token.clone()).await {
+      if let Ok(origin_method) = SessionOriginMethod::try_from(session_origin) {
+        match origin_method {
+          SessionOriginMethod::OIDC { provider_key, data_json,.. } => {
+            if let Some(data) = data_json {
+              if let Some(prov) = oidc_enabled.filter_provider(&provider_key) {
+                let end_session_endpoint = prov.config.end_session_endpoint.as_ref().map(|u| u.url());
+
+                let post_logout_redirect = prov.config.post_logout_redirect_uri
+                  .as_ref()
+                  .map(|u| u.as_str());
+
+                sso_redirect = build_oidc_logout_redirect(end_session_endpoint, &data.id_token, post_logout_redirect);
+              }
+            }
+          },
+          _ => (),
+        }
+      }
+    }
+  };
+
+  // delete sessions
+  match delete_session_by_refresh_token(pool.get().await.unwrap(), refresh_token).await {
+    Ok(true) => {} // deleted
+    Ok(false) => tracing::debug!("logout: no session found"),
+    Err(e) => tracing::warn!("logout: failed to invalidate session: {e}"),
+  }
+
+  if let Some(r) = sso_redirect {
+    return (jar.add(cookie_cleared), r).into_response();
+  }
+
+  (jar.add(cookie_cleared), StatusCode::NO_CONTENT).into_response()
+}
+
+fn build_oidc_logout_redirect(
+  end_session_endpoint: Option<&Url>,
+  id_token_hint: &str,
+  post_logout_redirect_uri: Option<&str>,
+) -> Option<Redirect> {
+  let mut url = end_session_endpoint?.clone();
+
+  {
+    let mut qp = url.query_pairs_mut();
+    qp.append_pair("id_token_hint", id_token_hint);
+
+    if let Some(plr) = post_logout_redirect_uri {
+      qp.append_pair("post_logout_redirect_uri", plr);
     }
   }
 
-  (jar.add(clear_refresh_cookie(&headers)), StatusCode::NO_CONTENT)
+  Some(Redirect::to(url.as_str()))
 }
 
 #[derive(TypedPath)]

@@ -1,5 +1,5 @@
 use openidconnect::{
-    ClientId, ClientSecret, EndpointMaybeSet, EndpointNotSet, EndpointSet, IssuerUrl, RedirectUrl, core::{CoreClient, CoreProviderMetadata}, reqwest
+    ClientId, ClientSecret, EndSessionUrl, EndpointMaybeSet, EndpointNotSet, EndpointSet, IssuerUrl, ProviderMetadataWithLogout, RedirectUrl, core::CoreClient, reqwest
 };
 use tracing::debug;
 
@@ -26,7 +26,11 @@ pub type ConfiguredCoreClient = CoreClient<
     EndpointMaybeSet, // userinfo url maybe set (depends on provider metadata)
 >;
 
-pub async fn build_oidc_client(http_client: &reqwest::Client) -> Result<ConfiguredCoreClient, Box<dyn std::error::Error>> {
+pub struct AdditionalProviderMetadata {
+  pub end_session_endpoint: Option<EndSessionUrl>,
+}
+
+pub async fn build_oidc_client(http_client: &reqwest::Client) -> Result<(ConfiguredCoreClient, AdditionalProviderMetadata), Box<dyn std::error::Error>> {
     let issuer = std::env::var("OIDC_ISSUER")?;
     let client_id = std::env::var("OIDC_CLIENT_ID")?;
     let client_secret = std::env::var("OIDC_CLIENT_SECRET")?;
@@ -43,11 +47,15 @@ pub async fn build_oidc_client(http_client: &reqwest::Client) -> Result<Configur
         .unwrap_or_else(|_| format!("{}auth/oidc/{}/callback", backend_url.as_str(), provider_key).to_string());
 
     // IMPORTANT: issuer should be like: https://auth.example.com/realms/YourRealm
-    let provider_metadata = CoreProviderMetadata::discover_async(
+    let provider_metadata = ProviderMetadataWithLogout::discover_async(
         IssuerUrl::new(issuer)?,
         http_client,
     )
     .await?;
+
+    let additional_provider_metadata = AdditionalProviderMetadata {
+      end_session_endpoint: provider_metadata.additional_metadata().end_session_endpoint.clone()
+    };
 
     let client = CoreClient::from_provider_metadata(
         provider_metadata,
@@ -56,7 +64,7 @@ pub async fn build_oidc_client(http_client: &reqwest::Client) -> Result<Configur
     )
     .set_redirect_uri(RedirectUrl::new(redirect)?);
 
-    Ok(client)
+    Ok((client, additional_provider_metadata))
 }
 
 pub fn sanitize_frontend_redirect(r: Option<String>) -> Option<String> {

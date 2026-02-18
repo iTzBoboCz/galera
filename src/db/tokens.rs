@@ -1,9 +1,9 @@
 use crate::db::LastInsertId;
-use crate::models::{NewAuthAccessToken, NewAuthRefreshToken};
+use crate::models::{AuthRefreshToken, AuthSessionOrigin, NewAuthAccessToken, NewAuthRefreshToken, NewAuthSessionOrigin, SessionOriginMethod};
 use crate::{DbConn};
-use crate::schema::{auth_access_token, auth_refresh_token};
+use crate::schema::{auth_access_token, auth_refresh_token, auth_session_origin};
 use chrono::NaiveDateTime;
-use diesel::{Connection, RunQueryDsl};
+use diesel::{Connection, JoinOnDsl, RunQueryDsl};
 use diesel::QueryDsl;
 use diesel::OptionalExtension;
 use diesel::ExpressionMethods;
@@ -103,7 +103,7 @@ pub async fn delete_obsolete_access_tokens(conn: DbConn, refresh_token_id: i32) 
     .map_err(|_| diesel::result::Error::RollbackTransaction)?
 }
 
-pub async fn insert_session_tokens(conn: DbConn, user_id: i32, refresh_token: String, access_token: String) -> Result<(i32, i32), diesel::result::Error> {
+pub async fn insert_session_tokens(conn: DbConn, user_id: i32, refresh_token: String, access_token: String, session_origin: SessionOriginMethod) -> Result<(i32, i32), diesel::result::Error> {
   conn.interact(move |c| {
     c.transaction::<(i32, i32), diesel::result::Error, _>(|c| {
       diesel::insert_into(auth_refresh_token::table)
@@ -114,6 +114,9 @@ pub async fn insert_session_tokens(conn: DbConn, user_id: i32, refresh_token: St
         diesel::sql_query("SELECT LAST_INSERT_ID() AS id")
           .get_result::<LastInsertId>(c)?;
 
+      diesel::insert_into(auth_session_origin::table)
+        .values(NewAuthSessionOrigin::new(refresh_token_id, session_origin))
+        .execute(c)?;
 
       diesel::insert_into(auth_access_token::table)
         .values(NewAuthAccessToken::new(refresh_token_id, access_token))
@@ -159,9 +162,47 @@ pub async fn delete_session_by_refresh_token(
         )
         .execute(c)?;
 
+        // Delete auth_session_origin
+        diesel::delete(
+          auth_session_origin::table.filter(auth_session_origin::refresh_token_id.eq(refresh_token_id)),
+        )
+        .execute(c)?;
+
         Ok(true)
       })
     })
     .await
     .map_err(|_| diesel::result::Error::RollbackTransaction)?
+}
+
+/// Selects auth_session_origin from a given refresh token value.
+pub async fn get_auth_session_origin(
+  conn: DbConn,
+  refresh_token: String,
+) -> Result<Option<(AuthRefreshToken, AuthSessionOrigin)>, diesel::result::Error> {
+  let result = conn
+    .interact(move |c| {
+      auth_refresh_token::table
+        .inner_join(
+          auth_session_origin::table
+            .on(auth_session_origin::refresh_token_id.eq(auth_refresh_token::id)),
+        )
+        .filter(auth_refresh_token::refresh_token.eq(refresh_token))
+        .select((
+          auth_refresh_token::all_columns,
+          auth_session_origin::all_columns,
+        ))
+        .first::<(AuthRefreshToken, AuthSessionOrigin)>(c)
+        .optional()
+    })
+    .await
+    .map_err(|e| {
+      error!("DB interact failed in get_auth_session_origin: {e}");
+      diesel::result::Error::DatabaseError(
+        diesel::result::DatabaseErrorKind::Unknown,
+        Box::new(format!("interact failed: {e}")),
+      )
+    })??;
+
+  Ok(result)
 }

@@ -5,7 +5,7 @@ use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, TokenData, Valid
 use tracing::error;
 use uuid::Uuid;
 use utoipa::ToSchema;
-use crate::{AppState, ConnectionPool, db::{tokens::{insert_access_token, insert_session_tokens, select_refresh_token_expiration}, users}, instance_uuid};
+use crate::{AppState, ConnectionPool, db::{tokens::{insert_access_token, insert_session_tokens, select_refresh_token_expiration}, users}, instance_uuid, models::SessionOriginMethod};
 use crate::DbConn;
 use crate::auth::secret::Secret;
 use anyhow::{self, Context};
@@ -168,8 +168,8 @@ impl Claims {
     self.jti.clone()
   }
 
-  pub async fn add_session_tokens_to_db(&self, pool: ConnectionPool, refresh_token: String) -> Result<(i32, i32), diesel::result::Error> {
-    insert_session_tokens(pool.get().await.unwrap(), self.user_id, refresh_token, self.access_token()).await
+  pub async fn add_session_tokens_to_db(&self, pool: ConnectionPool, refresh_token: String, session_origin: SessionOriginMethod) -> Result<(i32, i32), diesel::result::Error> {
+    insert_session_tokens(pool.get().await.unwrap(), self.user_id, refresh_token, self.access_token(), session_origin).await
   }
 
   /// Adds a new access token to the database.

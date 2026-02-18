@@ -31,7 +31,7 @@ use metrics_exporter_prometheus::{Matcher, PrometheusBuilder, PrometheusHandle};
 use std::{fs, future::ready, net::SocketAddr, process::ExitCode, sync::Arc, time::Instant};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use tower_http::trace::TraceLayer;
-use openidconnect::reqwest;
+use openidconnect::{EndSessionUrl, reqwest, url::Url};
 
 // mod media;
 // mod errors;
@@ -83,6 +83,8 @@ pub struct OidcProvider {
 #[derive(Clone)]
 pub struct OidcProviderConfig {
   pub allow_signup: bool,
+  pub post_logout_redirect_uri: Option<Url>,
+  pub end_session_endpoint: Option<EndSessionUrl>
   // pub map_by_email: bool,
 }
 
@@ -104,6 +106,14 @@ pub struct OidcEnabled {
   oidc_providers: Arc<DashMap<String, OidcProvider>>,
   login_states: Arc<DashMap<String, oidc::PendingLogin>>,
   http_client: reqwest::Client,
+}
+
+impl OidcEnabled {
+  pub fn filter_provider(&self, provider_key: &str) -> Option<OidcProvider> {
+    self.oidc_providers
+      .get(provider_key)
+      .map(|entry| entry.value().clone())
+  }
 }
 
 #[tokio::main]
@@ -318,7 +328,7 @@ pub async fn oidc() -> OidcState {
   let oidc_providers: Arc<DashMap<String, OidcProvider>> = Arc::new(DashMap::new());
 
   match oidc::build_oidc_client(&http_client).await {
-    Ok(client) => {
+    Ok((client, metadata)) => {
       let display_name = std::env::var("OIDC_PROVIDER_KEY").ok();
 
       // let map_by_email = std::env::var("OIDC_MAP_BY_EMAIL")
@@ -328,6 +338,13 @@ pub async fn oidc() -> OidcState {
         .map(|v| matches!(v.to_lowercase().as_str(), "true" | "1"))
         .unwrap_or(false);
 
+      let post_logout_redirect_uri = std::env::var("OIDC_POST_LOGOUT_REDIRECT_URI")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .and_then(|s| Url::parse(&s).ok());
+
+      let end_session_endpoint = metadata.end_session_endpoint;
       if let Ok(oidc_provider) = std::env::var("OIDC_PROVIDER_KEY") {
         oidc_providers.insert(
           oidc_provider.clone(),
@@ -335,7 +352,7 @@ pub async fn oidc() -> OidcState {
             key: oidc_provider.clone(),
             display_name,
             client,
-            config: OidcProviderConfig { allow_signup },
+            config: OidcProviderConfig { allow_signup, post_logout_redirect_uri, end_session_endpoint },
           },
         );
 

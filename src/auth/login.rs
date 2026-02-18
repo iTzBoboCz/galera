@@ -1,4 +1,4 @@
-use crate::{ConnectionPool, db::users::check_user_login, models::User};
+use crate::{ConnectionPool, db::users::check_user_login, models::{SessionOriginMethod, User}};
 use serde::{Serialize, Deserialize};
 use sha2::Digest;
 use utoipa::ToSchema;
@@ -25,7 +25,7 @@ impl UserLogin {
     let token = Claims::new(id, uuid);
 
     // add refresh and access tokens to db
-    token.add_session_tokens_to_db(pool, refresh_token).await.ok()?;
+    token.add_session_tokens_to_db(pool, refresh_token, SessionOriginMethod::Local).await.ok()?;
 
     Some(token)
   }

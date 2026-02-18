@@ -71,6 +71,20 @@ diesel::table! {
 }
 
 diesel::table! {
+  auth_session_origin (refresh_token_id) {
+    refresh_token_id -> Integer,
+    #[max_length = 32]
+    method -> Varchar,
+    #[max_length = 128]
+    provider_key -> Nullable<Varchar>,
+    #[max_length = 255]
+    subject -> Nullable<Varchar>,
+    data_json -> Nullable<Text>,
+    created_at -> Timestamp,
+  }
+}
+
+diesel::table! {
   favorite_media (id) {
     id -> Integer,
     media_id -> Integer,
@@ -141,6 +155,7 @@ diesel::joinable!(album_media -> media (media_id));
 diesel::joinable!(album_share_link -> album (album_id));
 diesel::joinable!(auth_access_token -> auth_refresh_token (refresh_token_id));
 diesel::joinable!(auth_refresh_token -> user (user_id));
+diesel::joinable!(auth_session_origin -> auth_refresh_token (refresh_token_id));
 diesel::joinable!(favorite_media -> media (media_id));
 diesel::joinable!(favorite_media -> user (user_id));
 diesel::joinable!(folder -> user (owner_id));
@@ -155,6 +170,7 @@ diesel::allow_tables_to_appear_in_same_query!(
   album_share_link,
   auth_access_token,
   auth_refresh_token,
+  auth_session_origin,
   favorite_media,
   folder,
   media,

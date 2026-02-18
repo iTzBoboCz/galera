@@ -4,7 +4,7 @@ use crate::config::get_frontend_callback_url;
 use crate::cookies::build_refresh_cookie;
 use crate::db::oidc::insert_oidc_user;
 use crate::db::users::get_user_by_id;
-use crate::models::User;
+use crate::models::{DataJsonOidc, SessionOriginMethod, User};
 use crate::openapi::tags::{AUTH, AUTH_PUBLIC, OIDC, OTHER};
 use axum::extract::{Query, State};
 use axum::http::HeaderMap;
@@ -207,7 +207,15 @@ pub async fn oidc_callback(
 
   debug!("OIDC login ok provider={} sub={} email={:?}", provider, sub, email);
 
-  // 5) Find existing identity by (provider, sub)
+  // 5) Create session origin
+  let session_origin = SessionOriginMethod::OIDC {
+    provider_key: provider.clone(), subject: sub.clone(), data_json: Some(DataJsonOidc {
+      id_token: id_token.to_string(),
+      sid: None
+    })
+  };
+
+  // 6) Find existing identity by (provider, sub)
   match db::oidc::get_user_by_oidc_subject(state.pool.get().await.unwrap(), provider.clone(), sub.clone()).await {
     Ok(Some(oidc_identity)) => {
       let Some(user) = get_user_by_id(state.pool.get().await.unwrap(), oidc_identity.user_id).await else {
@@ -215,7 +223,7 @@ pub async fn oidc_callback(
         return Err((StatusCode::INTERNAL_SERVER_ERROR, ""));
       };
       let claims = Claims::new(user.id, user.uuid);
-      return issue_oidc_login_response(state.pool, headers, claims, jar, pending.redirect).await;
+      return issue_oidc_login_response(state.pool, headers, claims, jar, pending.redirect, session_origin).await;
     }
 
     // Continue to create a user
@@ -227,7 +235,7 @@ pub async fn oidc_callback(
     }
   }
 
-  // 5b) If enabled, try to link an existing LOCAL user by email
+  // 6b) If enabled, try to link an existing LOCAL user by email
   let oidc_link_existing_by_email = std::env::var("OIDC_LINK_EXISTING_BY_EMAIL")
     .map(|v| matches!(v.to_lowercase().as_str(), "true" | "1"))
     .unwrap_or(false);
@@ -254,7 +262,7 @@ pub async fn oidc_callback(
           sub.clone(),
         ).await {
           Ok(()) => {
-            return issue_oidc_login_response(state.pool, headers, Claims::new(existing.id, existing.uuid), jar, pending.redirect).await;
+            return issue_oidc_login_response(state.pool, headers, Claims::new(existing.id, existing.uuid), jar, pending.redirect, session_origin).await;
           }
           Err(e) => {
             error!("DB error inserting oidc identity link: {e}");
@@ -271,12 +279,12 @@ pub async fn oidc_callback(
     }
   }
 
-  // 6) Not found → signup gate
+  // 7) Not found → signup gate
   if !prov.config.allow_signup {
     return Err((StatusCode::UNAUTHORIZED, "Signups disabled"));
   }
 
-  // 7) Create new local user (OIDC-only) + link identity
+  // 8) Create new local user (OIDC-only) + link identity
   let Ok(user_id) = insert_oidc_user(state.pool.get().await.unwrap(), provider.clone(), sub.clone(), email).await else {
     debug!("Created a new OIDC-only user - IdP provider: {}, IdP sub: {}", provider, sub);
     return Err((StatusCode::INTERNAL_SERVER_ERROR, "Can't create new oidc-only user"));
@@ -287,8 +295,8 @@ pub async fn oidc_callback(
     return Err((StatusCode::INTERNAL_SERVER_ERROR, ""));
   };
 
-  // 8) Issue normal JWT login response
-  issue_oidc_login_response(state.pool, headers, Claims::new(user_id, uuid), jar, pending.redirect).await
+  // 9) Issue normal JWT login response
+  issue_oidc_login_response(state.pool, headers, Claims::new(user_id, uuid), jar, pending.redirect, session_origin).await
 }
 
 pub async fn issue_oidc_login_response(
@@ -296,11 +304,13 @@ pub async fn issue_oidc_login_response(
   headers: HeaderMap,
   claims: Claims,
   jar: CookieJar,
-  redirect: Option<String>
+  redirect: Option<String>,
+  session_origin: SessionOriginMethod,
 ) -> Result<(CookieJar, Redirect), (StatusCode, &'static str)> {
   let refresh_token = Uuid::new_v4().to_string();
 
-  if let Err(e) = claims.add_session_tokens_to_db(pool.clone(), refresh_token.clone()).await {
+
+  if let Err(e) = claims.add_session_tokens_to_db(pool.clone(), refresh_token.clone(), session_origin).await {
     error!("Failed to insert session tokens during OIDC callback: {e}");
     return Err((StatusCode::INTERNAL_SERVER_ERROR, "".into()));
   }

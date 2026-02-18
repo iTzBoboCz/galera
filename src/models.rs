@@ -1,6 +1,6 @@
 use crate::auth::login::{ACCESS_TOKEN_TTL_SECS, REFRESH_TOKEN_TTL_SECS};
 
-use super::schema::{album, album_media, album_invite, album_share_link, auth_access_token, auth_refresh_token, folder, media, favorite_media, user, oidc_identity};
+use super::schema::{album, album_media, album_invite, album_share_link, auth_access_token, auth_refresh_token, auth_session_origin, folder, media, favorite_media, user, oidc_identity};
 use chrono::{Duration, NaiveDateTime, Utc};
 use email_address::EmailAddress;
 use lazy_regex::regex_is_match;
@@ -381,6 +381,155 @@ impl NewAuthAccessToken {
       refresh_token_id,
       access_token,
       expiration_time: Utc::now().naive_utc() + Duration::seconds(ACCESS_TOKEN_TTL_SECS)
+    }
+  }
+}
+
+#[allow(non_camel_case_types)]
+#[derive(Debug, Identifiable, Queryable, Associations)]
+#[diesel(table_name = auth_session_origin)]
+#[diesel(primary_key(refresh_token_id))]
+#[diesel(belongs_to(AuthRefreshToken, foreign_key = refresh_token_id))]
+pub struct AuthSessionOrigin {
+  pub refresh_token_id: i32,
+  pub method: String,
+  pub provider_key: Option<String>,
+  pub subject: Option<String>,
+  pub data_json: Option<String>,
+  pub created_at: NaiveDateTime,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DataJsonOidc {
+  pub id_token: String,
+  pub sid: Option<String>,
+}
+
+pub enum SessionOriginMethod {
+  Local,
+  OIDC {
+    provider_key: String,
+    subject: String,
+    data_json: Option<DataJsonOidc>,
+  },
+}
+
+
+impl SessionOriginMethod {
+  fn method(&self) -> String {
+    match self {
+      Self::Local => "local".into(),
+      Self::OIDC { .. } => "oidc".into(),
+    }
+  }
+
+  fn provider_key(&self) -> Option<String> {
+    match self {
+      Self::Local => None,
+      Self::OIDC { provider_key,.. } => Some(provider_key.clone()),
+    }
+  }
+
+  fn subject(&self) -> Option<String> {
+    match self {
+      Self::Local => None,
+      Self::OIDC { subject,.. } => Some(subject.clone()),
+    }
+  }
+
+  fn data_json(&self) -> Option<String> {
+    match self {
+      Self::Local => None,
+      Self::OIDC { data_json, .. } => {
+        if let Some(data) = data_json {
+          return Some(serde_json::to_string(data).ok()?);
+        };
+
+        return None;
+      }
+    }
+  }
+
+  pub fn is_local(&self) -> bool {
+    match self {
+      Self::Local => true,
+      _ => false
+    }
+  }
+}
+
+#[derive(Debug)]
+pub enum SessionOriginDecodeError {
+  UnknownMethod(String),
+  MissingField(&'static str),
+  InvalidJson(serde_json::Error),
+}
+
+impl TryFrom<&AuthSessionOrigin> for SessionOriginMethod {
+  type Error = SessionOriginDecodeError;
+
+  fn try_from(row: &AuthSessionOrigin) -> Result<Self, Self::Error> {
+    match row.method.as_str() {
+      "local" => Ok(SessionOriginMethod::Local),
+
+      "oidc" => {
+        let provider_key = row
+          .provider_key
+          .clone()
+          .ok_or(SessionOriginDecodeError::MissingField("provider_key"))?;
+
+        let subject = row
+          .subject
+          .clone()
+          .ok_or(SessionOriginDecodeError::MissingField("subject"))?;
+
+        let data_json = match row.data_json.as_deref() {
+          None => None,
+          Some(s) if s.trim().is_empty() => None,
+          Some(s) => Some(serde_json::from_str::<DataJsonOidc>(s)
+            .map_err(SessionOriginDecodeError::InvalidJson)?),
+        };
+
+        Ok(SessionOriginMethod::OIDC {
+          provider_key,
+          subject,
+          data_json,
+        })
+      }
+
+      other => Err(SessionOriginDecodeError::UnknownMethod(other.to_string())),
+    }
+  }
+}
+
+impl TryFrom<AuthSessionOrigin> for SessionOriginMethod {
+  type Error = SessionOriginDecodeError;
+
+  fn try_from(row: AuthSessionOrigin) -> Result<Self, Self::Error> {
+    SessionOriginMethod::try_from(&row)
+  }
+}
+
+
+/// struct for inserting auth session origins.
+#[derive(Insertable)]
+#[diesel(table_name = auth_session_origin)]
+pub struct NewAuthSessionOrigin {
+  pub refresh_token_id: i32,
+  pub method: String,
+  pub provider_key: Option<String>,
+  pub subject: Option<String>,
+  pub data_json: Option<String>,
+}
+
+impl NewAuthSessionOrigin {
+  pub fn new(refresh_token_id: i32, origin: SessionOriginMethod) -> Self {
+    Self {
+      refresh_token_id,
+      method: origin.method(),
+      provider_key: origin.provider_key(),
+      subject: origin.subject(),
+      data_json: origin.data_json(),
     }
   }
 }
