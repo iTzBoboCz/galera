@@ -24,7 +24,7 @@ use uuid::Uuid;
 use crate::auth::secret::Secret;
 use crate::directories::Directories;
 use axum::{response::{Html, IntoResponse}, routing::get, Router, http::Request, middleware::{Next, self}, extract::{MatchedPath}, body::Body};
-use deadpool_diesel::{Manager, Pool, Runtime, Timeouts};
+use deadpool_diesel::{Manager, ManagerConfig, Pool, RecyclingMethod, Runtime, Timeouts};
 use diesel::{MysqlConnection};
 use diesel_migrations::MigrationHarness;
 use metrics_exporter_prometheus::{Matcher, PrometheusBuilder, PrometheusHandle};
@@ -56,7 +56,11 @@ async fn create_db_pool() -> Result<ConnectionPool, Box<dyn std::error::Error>> 
     return Err(format!("DATABASE_URL not set").into());
   };
 
-  let manager = Manager::<MysqlConnection>::new(database_url, Runtime::Tokio1);
+  let cfg = ManagerConfig {
+    recycling_method: RecyclingMethod::Verified,
+  };
+
+  let manager = Manager::<MysqlConnection>::from_config(database_url, Runtime::Tokio1, cfg);
 
   let pool = Pool::builder(manager)
     .max_size(8)
