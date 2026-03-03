@@ -17,6 +17,7 @@ RUN cargo build --release --bin galera && strip /app/target/release/galera
 FROM debian:trixie-slim AS runtime
 WORKDIR app
 COPY --from=builder /app/target/release/galera /usr/local/bin
+COPY .env.default .env
 RUN apt update -y && apt install -y libmariadb3
 EXPOSE 8000
 ENTRYPOINT ["/usr/local/bin/galera"]
