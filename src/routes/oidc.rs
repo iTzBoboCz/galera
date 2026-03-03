@@ -62,8 +62,6 @@ pub async fn oidc_login(
     None => return (StatusCode::NOT_FOUND, "Unknown OIDC provider").into_response(),
   };
 
-  // If you store OidcProvider { client, ... }, use: let client = &prov.client;
-  // If you store raw clients, use: let client = &*prov;
   let client = &prov.client;
 
   let (auth_url, csrf_token, nonce) = client
