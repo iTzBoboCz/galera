@@ -15,6 +15,14 @@ RUN cargo build --release --bin galera && strip /app/target/release/galera
 
 # We do not need the Rust toolchain to run the binary!
 FROM debian:trixie-slim AS runtime
+
+# Set OCI labels
+LABEL org.opencontainers.image.title="Galera" \
+  org.opencontainers.image.description="Galera" \
+  org.opencontainers.image.source="https://github.com/itzbobocz/galera" \
+  org.opencontainers.image.url="https://github.com/itzbobocz/galera" \
+  org.opencontainers.image.base.name="docker.io/library/debian:trixie-slim"
+
 WORKDIR app
 COPY --from=builder /app/target/release/galera /usr/local/bin
 COPY .env.default .env
