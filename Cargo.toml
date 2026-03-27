@@ -52,7 +52,7 @@ directories = "6.0"
 nanoid = "0.4"
 sys-info = "0.9"
 walkdir = "2.5"
-tokio = { version = "1.49", features = ["rt-multi-thread", "macros", "fs", "net", "io-util" ] }
+tokio = { version = "1.50", features = ["rt-multi-thread", "macros", "fs", "net", "io-util" ] }
 tokio-util = { version = "0.7", default-features = false, features = ["io"]}
 tower-http = { version = "0.6", features = ["trace"] }
 openidconnect = "4.0"
